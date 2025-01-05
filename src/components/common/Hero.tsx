@@ -1,4 +1,4 @@
-"use client";
+"use client"
 import React, { useState, useCallback, useEffect } from 'react';
 import { X } from 'lucide-react';
 import Footer from "@/components/sections/Footer";
@@ -21,6 +21,7 @@ import {
   SolflareWalletAdapter 
 } from '@solana/wallet-adapter-wallets';
 require('@solana/wallet-adapter-react-ui/styles.css');
+
 
 
 interface Freelancer {
@@ -472,7 +473,7 @@ const Hero: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-[#0D0D0D] z-80">
+    <div className="min-h-screen bg-[#0D0D0D]">
       <Navbar
         navItems={navItems}
         title="Soleer Marketplace"
@@ -485,50 +486,48 @@ const Hero: React.FC = () => {
       />
 
       {connected ? (
-        <main className="container mx-auto px-4">
-          {/* Sticky header with buttons */}
-          <div className="sticky top-20 bg-[#0D0D0D] pt-6 pb-4 z-20">
-            
-
-            {/* Search bar */}
-            <div className="relative mb-6">
+        <main className="container mx-auto px-3 sm:px-4">
+          {/* Sticky header with optimized mobile spacing */}
+          <div className="sticky top-16 sm:top-20 bg-[#0D0D0D] pt-4 sm:pt-6 pb-3 sm:pb-4 z-20">
+            {/* Search bar with mobile optimization */}
+            <div className="relative mb-4 sm:mb-6">
               <input
                 type="text"
                 placeholder="Search for jobs to hire"
-                className="w-full bg-[#1A1B1E] p-3 pl-10 rounded-lg text-white placeholder-gray-400"
+                className="w-full bg-[#1A1B1E] p-2 sm:p-3 pl-8 sm:pl-10 rounded-lg text-white placeholder-gray-400 text-sm sm:text-base"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+              <div className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
                 <SearchIcon />
               </div>
             </div>
 
-            {/* Filter buttons */}
-            <div className="flex space-x-6 mb-6">
+            {/* Filter buttons with mobile optimization */}
+            <div className="flex space-x-4 sm:space-x-6 mb-4 sm:mb-6">
               <button
-                className={`flex items-center space-x-2 px-4 py-2 rounded ${
+                className={`flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded text-sm sm:text-base ${
                   activeTab === 'trending' ? 'text-[#8B5CF6]' : 'text-gray-400'
                 }`}
                 onClick={() => setActiveTab('trending')}
               >
-                <span className="text-lg">⚡</span>
+                <span className="text-base sm:text-lg">⚡</span>
                 <span>Trending</span>
               </button>
               <button
-                className={`flex items-center space-x-2 px-4 py-2 rounded ${
+                className={`flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded text-sm sm:text-base ${
                   activeTab === 'popular' ? 'text-[#8B5CF6]' : 'text-gray-400'
                 }`}
                 onClick={() => setActiveTab('popular')}
               >
-                <span className="text-lg">⭐</span>
+                <span className="text-base sm:text-lg">⭐</span>
                 <span>Popular</span>
               </button>
             </div>
           </div>
 
-          {/* Grid of jobs */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 relative z-0">
+          {/* Updated grid layout for mobile optimization */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-6 relative z-0">
             {paginatedJobs.map(job => (
               <JobCard
                 key={job.id}
@@ -538,14 +537,14 @@ const Hero: React.FC = () => {
             ))}
           </div>
 
-          {/* Pagination */}
+          {/* Pagination with mobile optimization */}
           {totalPages > 1 && (
-            <div className="flex justify-center mt-8 space-x-2">
+            <div className="flex justify-center mt-6 sm:mt-8 space-x-1 sm:space-x-2 pb-6">
               {Array.from({ length: totalPages }, (_, i) => (
                 <button
                   key={i + 1}
                   onClick={() => setCurrentPage(i + 1)}
-                  className={`px-4 py-2 rounded ${
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-base ${
                     currentPage === i + 1
                       ? 'bg-[#8B5CF6] text-white'
                       : 'bg-[#1A1B1E] text-gray-400 hover:bg-[#26272B]'
@@ -558,29 +557,22 @@ const Hero: React.FC = () => {
           )}
         </main>
       ) : (
-<div className="container mx-auto px-4 pt-20 text-center">
+        <div className="container mx-auto px-3 sm:px-4 pt-16 sm:pt-20 text-center">
           <div className="max-w-2xl mx-auto">
-            <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-transparent bg-clip-text">
+            <h1 className="text-3xl sm:text-4xl font-bold mb-3 sm:mb-4 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-transparent bg-clip-text">
               Welcome to Soleer Marketplace
             </h1>
-            <p className="text-gray-400 text-xl mb-8">
+            <p className="text-gray-400 text-lg sm:text-xl mb-6 sm:mb-8">
               Connect your wallet to access the decentralized freelance marketplace
             </p>
             <div className="flex justify-center">
-              <WalletMultiButton className="!bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] hover:from-[#7C3AED] hover:to-[#6B2CF5] !transition-all !duration-200 !rounded-xl !px-8 !py-3" />
+              <WalletMultiButton className="!bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] hover:from-[#7C3AED] hover:to-[#6B2CF5] !transition-all !duration-200 !rounded-xl !px-6 sm:!px-8 !py-2.5 sm:!py-3" />
             </div>
           </div>
         </div>
       )}
 
-
-      
       <Footer />
-      {isComingSoonModalOpen && (
-        <ComingSoonModal 
-          isOpen={isComingSoonModalOpen}
-        />
-      )}
     </div>
   );
 };
