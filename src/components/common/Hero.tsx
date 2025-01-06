@@ -1,10 +1,12 @@
 "use client"
 import React, { useState, useCallback, useEffect } from 'react';
-import { X } from 'lucide-react';
 import Footer from "@/components/sections/Footer";
 import Navbar from './Navbar';
 import "@/app/globals.css";
 import ComingSoonModal from '../../pages/ComingSoonModal';
+import { Plus, UploadCloud, X, Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
 import {
   ConnectionProvider,
   WalletProvider,
@@ -20,17 +22,22 @@ import {
   PhantomWalletAdapter, 
   SolflareWalletAdapter 
 } from '@solana/wallet-adapter-wallets';
+
 require('@solana/wallet-adapter-react-ui/styles.css');
 
+// Define Toast types
+type ToastType = 'success' | 'error' | 'info';
 
+interface ToastAlert {
+  type: ToastType;
+  message: string;
+}
 
 interface Freelancer {
   name: string;
   avatar: string;
   skills?: string[];
 }
-
-
 
 interface Job {
   id: string;
@@ -52,6 +59,253 @@ interface JobCardProps {
   onProfileClick: (freelancer: Freelancer) => void;
 }
 
+interface PostGigModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
+  const [formData, setFormData] = useState({
+    image: null as File | null,
+    subject: '',
+    description: '',
+    amount: ''
+  });
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [toastAlert, setToastAlert] = useState<ToastAlert | null>(null);
+
+  const showToast = (type: ToastType, message: string) => {
+    setToastAlert({ type, message });
+    setTimeout(() => setToastAlert(null), 5000); // Hide after 5 seconds
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFormData({ ...formData, image: file });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadImage = async (file: File): Promise<string> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) throw new Error('Image upload failed');
+      
+      const data = await response.json();
+      return data.url;
+    } catch (error) {
+      throw new Error('Failed to upload image');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+
+    try {
+      if (!formData.subject || !formData.description || !formData.amount) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      let imageUrl = null;
+      if (formData.image) {
+        imageUrl = await uploadImage(formData.image);
+      }
+
+      const response = await fetch('/api/gigs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: formData.subject,
+          description: formData.description,
+          amount: parseFloat(formData.amount),
+          image: imageUrl,
+          status: 'ACTIVE'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create gig');
+      }
+
+      showToast('success', 'Gig Posted Successfully! 🎉');
+
+      setFormData({
+        image: null,
+        subject: '',
+        description: '',
+        amount: ''
+      });
+      setPreviewUrl(null);
+      onClose();
+
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+      showToast('error', error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-[#1A1B1E] rounded-lg w-full max-w-lg relative">
+        {toastAlert && (
+          <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded ${
+            toastAlert.type === 'success' ? 'bg-green-500' : 
+            toastAlert.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+          } text-white`}>
+            {toastAlert.message}
+          </div>
+        )}
+        
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 text-gray-400 hover:text-white"
+          disabled={isLoading}
+        >
+          <X size={24} />
+        </button>
+
+        <div className="p-6">
+          <h2 className="text-xl font-bold text-white mb-6">Post a New Gig</h2>
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Image Upload */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Gig Image
+              </label>
+              <div className="border-2 border-dashed border-gray-600 rounded-lg p-4">
+                {previewUrl ? (
+                  <div className="relative">
+                    <img 
+                      src={previewUrl} 
+                      alt="Preview" 
+                      className="w-full h-48 object-cover rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewUrl(null);
+                        setFormData({ ...formData, image: null });
+                      }}
+                      className="absolute top-2 right-2 bg-red-500 p-1 rounded-full"
+                      disabled={isLoading}
+                    >
+                      <X size={16} className="text-white" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center h-48 cursor-pointer">
+                    <UploadCloud className="w-12 h-12 text-gray-400 mb-2" />
+                    <span className="text-gray-400 text-sm">Click to upload image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                      disabled={isLoading}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* Subject */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Subject
+              </label>
+              <input
+                type="text"
+                value={formData.subject}
+                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none"
+                placeholder="Enter gig subject"
+                disabled={isLoading}
+                required
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Description
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 h-32 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none"
+                placeholder="Describe your gig"
+                disabled={isLoading}
+                required
+              />
+            </div>
+
+            {/* Amount */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Amount (SOL)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none"
+                  placeholder="Enter amount"
+                  step="0.1"
+                  min="0"
+                  disabled={isLoading}
+                  required
+                />
+                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                  SOL
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 flex items-center justify-center"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Posting Gig...
+                </>
+              ) : (
+                'Post Gig'
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 
 
@@ -289,19 +543,15 @@ const HeroWithWallet: React.FC = () => {
 
 const Hero: React.FC = () => {
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(true);
-  const { connected } = useWallet();
   const [isComingSoonModalOpen, setIsComingSoonModalOpen] = useState(false);
+  const [isPostGigModalOpen, setIsPostGigModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('trending');
   const [selectedFreelancer, setSelectedFreelancer] = useState<Freelancer | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  //const [isWalletModalOpen, setIsWalletModalOpen] = useState(true);
- // const { connected } = useWallet();
-  const [isModalOpen, setIsModalOpen] = useState(false); // Modal state
-
+  const { connected } = useWallet();
 
   useEffect(() => {
-    // Show coming soon modal after a delay
     const timer = setTimeout(() => {
       setIsComingSoonModalOpen(true);
     }, 500);
@@ -310,7 +560,6 @@ const Hero: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Only close wallet modal if connected
     if (connected) {
       setIsWalletModalOpen(false);
     }
@@ -489,6 +738,17 @@ const Hero: React.FC = () => {
         <main className="container mx-auto px-3 sm:px-4">
           {/* Sticky header with optimized mobile spacing */}
           <div className="sticky top-16 sm:top-20 bg-[#0D0D0D] pt-4 sm:pt-6 pb-3 sm:pb-4 z-20">
+            {/* Add Post Gig button */}
+            <div className="flex justify-end mb-4">
+              <button
+                onClick={() => setIsPostGigModalOpen(true)}
+                className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200"
+              >
+                <Plus size={20} />
+                <span>Post Gig</span>
+              </button>
+            </div>
+
             {/* Search bar with mobile optimization */}
             <div className="relative mb-4 sm:mb-6">
               <input
@@ -555,6 +815,11 @@ const Hero: React.FC = () => {
               ))}
             </div>
           )}
+           <PostGigModal 
+            isOpen={isPostGigModalOpen}
+            onClose={() => setIsPostGigModalOpen(false)}
+          />
+
         </main>
       ) : (
         <div className="container mx-auto px-3 sm:px-4 pt-16 sm:pt-20 text-center">

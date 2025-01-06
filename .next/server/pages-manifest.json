@@ -1,9 +1,5 @@
 {
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
-  "/_document": "pages/_document.js",
-  "/profile": "pages/profile.js",
-  "/api/profile/check-email": "pages/api/profile/check-email.js",
-  "/faq": "pages/faq.js",
-  "/dashboard": "pages/dashboard.js"
+  "/_document": "pages/_document.js"
 }

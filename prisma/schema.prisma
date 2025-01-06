@@ -1,43 +1,41 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
-// Changed from soleer_db to db (standard name)
 datasource db {
-  provider = "postgresql"
-  url = env("POSTGRES_PRISMA_URL") // uses connection pooling
-  directUrl = env("POSTGRES_URL_NON_POOLING") // uses a direct connection
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 model User {
-  id              String    @id @default(cuid())
-  walletAddress   String    @unique
-  email           String?   @unique
-  emailVerified   Boolean   @default(false)
-  verificationCode String?  // For email verification process
-  username        String?   @unique
-  name            String?
-  bio             String?   @db.Text
-  profileImage    String?
-  bannerImage     String?
-  isEmailVerified Boolean   @default(false)
-  verifiedEmail   String?
-  
+  id               String  @id @default(cuid())
+  walletAddress    String  @unique
+  email            String? @unique
+  emailVerified    Boolean @default(false)
+  verificationCode String?
+  username         String? @unique
+  name             String?
+  bio              String? @db.Text
+  profileImage     String?
+  bannerImage      String?
+  isEmailVerified  Boolean @default(false)
+  verifiedEmail    String?
+
   // Social links
-  website         String?
-  twitter         String?
-  linkedin        String?
-  discord         String?
-  
-  // Job Profile relation
-  jobProfile      JobProfile?
-  
+  website  String?
+  twitter  String?
+  linkedin String?
+  discord  String?
+
+  // Relations
+  jobProfile JobProfile?
+  gigs       Gig[] // User can have multiple gigs
+  savedGigs  SavedGig[] // User can save multiple gigs
+
   // Timestamps
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model JobProfile {
@@ -48,11 +46,58 @@ model JobProfile {
   skills      String[]
   description String   @db.Text
   bannerImage String?
-  
+
   // Professional links
-  portfolio   String?
-  
+  portfolio String?
+
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Gig {
+  id          String  @id @default(cuid())
+  title       String
+  description String  @db.Text
+  image       String? // URL to the gig image
+  amount      Float // Price in SOL
+
+  // Status and visibility
+  status     GigStatus @default(ACTIVE)
+  isArchived Boolean   @default(false)
+
+  // Relations
+  userId  String
+  user    User       @relation(fields: [userId], references: [id])
+  savedBy SavedGig[]
+
+  // Categories and tags
+  category String?
+  tags     String[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model SavedGig {
+  id        String   @id @default(cuid())
+  userId    String
+  gigId     String
+  user      User     @relation(fields: [userId], references: [id])
+  gig       Gig      @relation(fields: [gigId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, gigId])
+  @@index([userId])
+  @@index([gigId])
+}
+
+enum GigStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
 }
