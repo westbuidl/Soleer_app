@@ -1,22 +1,20 @@
 // Place this file in: src/lib/prisma.ts
 // Or if not using src: lib/prisma.ts
 
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '@prisma/client';
 
-// Add proper typing for the global object
+// Prevent multiple instances of Prisma Client in development
 declare global {
-  var prisma: PrismaClient | undefined
+  var prisma: PrismaClient | undefined;
 }
 
-const prisma = global.prisma || new PrismaClient({
-  log: ['query', 'error', 'warn'],
-})
+const prisma = global.prisma || new PrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma
+  global.prisma = prisma;
 }
 
-export default prisma
+export default prisma;
 
 // Alternative verbose version with explicit error handling
 /*
