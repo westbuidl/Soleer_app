@@ -10,8 +10,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const session = await getSession({ req });
     
-    if (!session) {
-      return res.status(401).json({ message: 'Unauthorized' });
+    if (!session?.user?.id) {
+      return res.status(401).json({ message: 'Unauthorized: User ID not found' });
     }
 
     const { title, description, amount, image, status } = req.body;
@@ -23,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         amount,
         image,
         status,
-        userId: session.user.id, // Assuming you have the user ID in the session
+        userId: session.user.id,
       },
     });
 
