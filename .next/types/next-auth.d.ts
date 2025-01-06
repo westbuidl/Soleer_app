@@ -1,14 +1,19 @@
-// types/next-auth.d.ts
 import 'next-auth';
 
 declare module 'next-auth' {
   interface Session {
     user: {
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
       id: string;
-      // Add other user properties you expect to have
-      email?: string;
-      name?: string;
-      image?: string;
-    };
+    }
+  }
+  
+  interface User {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
   }
 }

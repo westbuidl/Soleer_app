@@ -1,6 +1,17 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
 import { getSession } from 'next-auth/react';
+import { Session } from 'next-auth';
+
+// Define interface for extended session type
+interface ExtendedSession extends Session {
+  user: {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    id: string;  // Add the id field
+  }
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -8,8 +19,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const session = await getSession({ req });
+    const session = await getSession({ req }) as ExtendedSession | null;
     
+    // Type guard to ensure session and user exist
     if (!session?.user?.id) {
       return res.status(401).json({ message: 'Unauthorized: User ID not found' });
     }
