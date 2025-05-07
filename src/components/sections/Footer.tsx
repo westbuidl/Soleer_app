@@ -17,6 +17,12 @@ const Footer: React.FC<FooterProps> = ({ className }) => {
           {/* Brand Section */}
           <div className="col-span-2 sm:col-span-1 mb-8 sm:mb-0">
             <div className="mb-4 sm:mb-6">
+            <a 
+                href="../" 
+                
+                rel="noopener noreferrer"
+                className="hover:opacity-80 transition-opacity"
+              >
               <Image
                 src="/images/Soleer.png"
                 alt="Soleer Logo"
@@ -24,13 +30,12 @@ const Footer: React.FC<FooterProps> = ({ className }) => {
                 height={40}
                 className="object-contain w-24 sm:w-28 md:w-32"
               />
+              </a>
             </div>
             <p className="text-sm text-gray-400 mb-3">
               Soleer® is powered by Soleer Labs
             </p>
-            <p className="text-sm text-gray-400 mb-4">
-              London, England
-            </p>
+           
             
             {/* Social Media Links */}
             <div className="flex items-center gap-4 mt-4">
@@ -71,19 +76,30 @@ const Footer: React.FC<FooterProps> = ({ className }) => {
           <div className="col-span-1">
             <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Navigation</h3>
             <ul className="space-y-2 sm:space-y-3">
+           
               <li>
-                <Link href="/dashboard" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
-                  Dashboard
+                <Link href="https://soleer.xyz/#about" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                  About
                 </Link>
               </li>
               <li>
-                <Link href="/inbox" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
-                  Inbox
+                <Link href="https://soleer.xyz/#how-it-works" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                  How it works
                 </Link>
               </li>
               <li>
-                <Link href="/profile" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
-                  Profile
+                <Link href="https://soleer.xyz/#why-soleer" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                  Why Soleer
+                </Link>
+              </li>
+              <li>
+                <Link href="https://soleer.xyz/#governance" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                  Governance
+                </Link>
+              </li>
+              <li>
+                <Link href="https://soleer.xyz/#roadmap" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                  Roadmap
                 </Link>
               </li>
               
@@ -117,27 +133,27 @@ const Footer: React.FC<FooterProps> = ({ className }) => {
             <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Quick Links</h3>
             <ul className="space-y-2 sm:space-y-3">
               <li>
-              <Link href="/faq" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+              <Link href="https://soleer.xyz/faq" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
                   FAQ
                 </Link>
               </li>
               <li>
-                <Link href="/privacy-policy" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                <Link href="https://soleer.xyz/privacy-policy" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
                   Privacy Policy
                 </Link>
               </li>
               <li>
-                <Link href="/terms-of-service" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                <Link href="https://soleer.xyz/terms-of-service" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
                   Terms of service
                 </Link>
               </li>
               <li>
-                <Link href="/data-safety" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                <Link href="https://soleer.xyz/data-safety" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
                   Data Safety
                 </Link>
               </li>
               <li>
-                <Link href="/quality-guide" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
+                <Link href="https://soleer.xyz/quality-guide" className="text-xs sm:text-sm text-gray-400 hover:text-gray-300 transition-colors inline-block">
                   Quality Guide
                 </Link>
               </li>
@@ -150,7 +166,7 @@ const Footer: React.FC<FooterProps> = ({ className }) => {
           <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
             <div>
               <p className="text-xs sm:text-sm text-gray-400 text-center sm:text-left">
-                © Soleer 2024 All rights reserved
+              &copy; {new Date().getFullYear()} All rights reserved
               </p>
             </div>
             
