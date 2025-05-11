@@ -20,8 +20,8 @@ const FAQSection: React.FC = () => {
     { title: 'INBOX', href: '../inbox' },
     { title: 'PROFILE', href: '../profile' },
     { title: 'MARKETPLACE', href: '/' },
-    { title: 'SOLEER HOME', href: 'soleer.xyz' },
-    { title: 'FAQ', href: '../faq' },
+    { title: 'SOLEER HOME', href: 'https://www.soleer.xyz' },
+    { title: 'FAQ', href: 'https://www.soleer.xyz/faq' },
   ];
 
   // Typing effect
