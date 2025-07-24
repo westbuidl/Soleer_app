@@ -4,7 +4,7 @@ import Footer from "@/components/sections/Footer";
 import Navbar from './Navbar';
 import "@/app/globals.css";
 import ComingSoonModal from '../../pages/ComingSoonModal';
-import { Plus, UploadCloud, X, Loader2 } from 'lucide-react';
+import { Plus, UploadCloud, X, Loader2, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight, Grid3x3, List } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from 'next/navigation';
 
@@ -47,6 +47,9 @@ interface Job {
   description: string;
   price: number;
   freelancer: Freelancer;
+  category?: string;
+  tags?: string[];
+  createdAt?: string;
 }
 
 interface FreelancerProfileModalProps {
@@ -58,11 +61,21 @@ interface FreelancerProfileModalProps {
 interface JobCardProps {
   job: Job;
   onProfileClick: (freelancer: Freelancer) => void;
+  viewMode: 'grid' | 'list';
 }
 
 interface PostGigModalProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+// Search and Filter interfaces
+interface SearchFilters {
+  query: string;
+  category: string;
+  minPrice: string;
+  maxPrice: string;
+  sortBy: 'newest' | 'oldest' | 'price-low' | 'price-high' | 'title';
 }
 
 const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
@@ -599,7 +612,6 @@ const FreelancerProfileModal: React.FC<FreelancerProfileModalProps> = ({ isOpen,
   );
 };
 
-
 const WalletConnectionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
@@ -626,6 +638,243 @@ const WalletConnectionModal: React.FC<{ isOpen: boolean; onClose: () => void }> 
   );
 };
 
+// Enhanced Search and Filter Component
+const SearchAndFilters: React.FC<{
+  filters: SearchFilters;
+  onFiltersChange: (filters: SearchFilters) => void;
+  totalResults: number;
+  viewMode: 'grid' | 'list';
+  onViewModeChange: (mode: 'grid' | 'list') => void;
+}> = ({ filters, onFiltersChange, totalResults, viewMode, onViewModeChange }) => {
+  const [showFilters, setShowFilters] = useState(false);
+
+  const categories = [
+    'All Categories',
+    'Smart Contract Development',
+    'UI/UX Design',
+    'Web Development',
+    'Mobile Development',
+    'Blockchain Development',
+    'NFT Creation',
+    'DeFi Development',
+    'Token Development',
+    'Technical Writing',
+    'Marketing',
+    'Community Management'
+  ];
+
+  return (
+    <div className="bg-[#1A1B1E] rounded-lg p-4 mb-6 border border-[#26272B]">
+      {/* Search Bar */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <input
+            type="text"
+            placeholder="Search gigs, skills, or keywords..."
+            value={filters.query}
+            onChange={(e) => onFiltersChange({ ...filters, query: e.target.value })}
+            className="w-full bg-[#26272B] text-white rounded-lg pl-10 pr-4 py-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="flex items-center space-x-2 bg-[#26272B] text-white px-4 py-3 rounded-lg hover:bg-[#333] transition-colors border border-gray-600"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span className="hidden sm:inline">Filters</span>
+          </button>
+          <div className="flex border border-gray-600 rounded-lg overflow-hidden">
+            <button
+              onClick={() => onViewModeChange('grid')}
+              className={`p-3 transition-colors ${viewMode === 'grid' ? 'bg-[#8B5CF6] text-white' : 'bg-[#26272B] text-gray-400 hover:text-white'}`}
+            >
+              <Grid3x3 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onViewModeChange('list')}
+              className={`p-3 transition-colors ${viewMode === 'list' ? 'bg-[#8B5CF6] text-white' : 'bg-[#26272B] text-gray-400 hover:text-white'}`}
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Advanced Filters */}
+      {showFilters && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-[#26272B]">
+          <div>
+            <label className="block text-white text-sm font-medium mb-2">Category</label>
+            <select
+              value={filters.category}
+              onChange={(e) => onFiltersChange({ ...filters, category: e.target.value })}
+              className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600"
+            >
+              {categories.map((category) => (
+                <option key={category} value={category === 'All Categories' ? '' : category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-white text-sm font-medium mb-2">Min Price (SOL)</label>
+            <input
+              type="number"
+              placeholder="0.00"
+              value={filters.minPrice}
+              onChange={(e) => onFiltersChange({ ...filters, minPrice: e.target.value })}
+              className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600"
+              min="0"
+              step="0.01"
+            />
+          </div>
+
+          <div>
+            <label className="block text-white text-sm font-medium mb-2">Max Price (SOL)</label>
+            <input
+              type="number"
+              placeholder="1000.00"
+              value={filters.maxPrice}
+              onChange={(e) => onFiltersChange({ ...filters, maxPrice: e.target.value })}
+              className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600"
+              min="0"
+              step="0.01"
+            />
+          </div>
+
+          <div>
+            <label className="block text-white text-sm font-medium mb-2">Sort By</label>
+            <select
+              value={filters.sortBy}
+              onChange={(e) => onFiltersChange({ ...filters, sortBy: e.target.value as SearchFilters['sortBy'] })}
+              className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="price-low">Price: Low to High</option>
+              <option value="price-high">Price: High to Low</option>
+              <option value="title">Title A-Z</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Results Summary */}
+      <div className="flex justify-between items-center mt-4 pt-4 border-t border-[#26272B]">
+        <span className="text-gray-400 text-sm">
+          {totalResults} {totalResults === 1 ? 'gig' : 'gigs'} found
+        </span>
+        <button
+          onClick={() => onFiltersChange({ query: '', category: '', minPrice: '', maxPrice: '', sortBy: 'newest' })}
+          className="text-[#8B5CF6] hover:text-[#7C3AED] text-sm transition-colors"
+        >
+          Clear all filters
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Enhanced Pagination Component
+const Pagination: React.FC<{
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  totalItems: number;
+  itemsPerPage: number;
+}> = ({ currentPage, totalPages, onPageChange, totalItems, itemsPerPage }) => {
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8 p-4 bg-[#1A1B1E] rounded-lg border border-[#26272B]">
+      <div className="text-gray-400 text-sm">
+        Showing {startItem}-{endItem} of {totalItems} results
+      </div>
+      
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="flex items-center space-x-1 px-3 py-2 text-sm bg-[#26272B] text-white rounded-lg hover:bg-[#333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-gray-600"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          <span className="hidden sm:inline">Previous</span>
+        </button>
+        
+        <div className="flex space-x-1">
+          {getPageNumbers().map((page, index) => (
+            <button
+              key={index}
+              onClick={() => typeof page === 'number' && onPageChange(page)}
+              disabled={page === '...'}
+              className={`w-10 h-10 text-sm rounded-lg transition-colors ${
+                page === currentPage
+                  ? 'bg-[#8B5CF6] text-white'
+                  : page === '...'
+                  ? 'text-gray-400 cursor-default'
+                  : 'bg-[#26272B] text-white hover:bg-[#333] border border-gray-600'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+        </div>
+        
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="flex items-center space-x-1 px-3 py-2 text-sm bg-[#26272B] text-white rounded-lg hover:bg-[#333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-gray-600"
+        >
+          <span className="hidden sm:inline">Next</span>
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const ZapIcon: React.FC = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
@@ -638,45 +887,124 @@ const StarIcon: React.FC = () => (
   </svg>
 );
 
-const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick }) => (
-  <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full max-w-[280px]">
-    <div className="relative h-[160px] overflow-hidden">
-      <img
-        src={job.image}
-        alt={job.title}
-        className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
-      />
-      <button className="absolute top-2 right-2 p-1 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
-        <img src="/images/bookmark.png" alt="Bookmark" className="w-3 h-3" />
-      </button>
-    </div>
-    <div className="p-3">
-      <div
-        className="flex items-center space-x-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
-        onClick={() => onProfileClick(job.freelancer)}
-      >
-        <img
-          src={job.freelancer.avatar}
-          alt={job.freelancer.name}
-          className="w-4 h-4 rounded-full"
-        />
-        <span className="text-white text-xs font-medium truncate">{job.freelancer.name}</span>
+// Enhanced JobCard with better mobile responsiveness
+const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, viewMode }) => {
+  if (viewMode === 'list') {
+    return (
+      <div className="bg-[#1A1B1E] rounded-lg border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 transition-all duration-300 cursor-pointer group p-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="relative w-full sm:w-32 h-32 sm:h-24 flex-shrink-0 overflow-hidden rounded-lg">
+            <img
+              src={job.image}
+              alt={job.title}
+              className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
+            />
+            <button className="absolute top-2 right-2 p-1 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
+              <img src="/images/bookmark.png" alt="Bookmark" className="w-3 h-3" />
+            </button>
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
+              <div className="flex-1 min-w-0">
+                <div
+                  className="flex items-center space-x-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => onProfileClick(job.freelancer)}
+                >
+                  <img
+                    src={job.freelancer.avatar}
+                    alt={job.freelancer.name}
+                    className="w-5 h-5 rounded-full flex-shrink-0"
+                  />
+                  <span className="text-white text-sm font-medium truncate">{job.freelancer.name}</span>
+                </div>
+                <h3 className="text-white font-semibold text-lg mb-2 group-hover:text-[#8B5CF6] transition-colors line-clamp-1">{job.title}</h3>
+                <p className="text-gray-400 text-sm mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
+                
+                {job.tags && job.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {job.tags.slice(0, 3).map((tag, index) => (
+                      <span key={index} className="bg-[#26272B] text-[#8B5CF6] px-2 py-1 rounded-full text-xs border border-[#333]">
+                        {tag}
+                      </span>
+                    ))}
+                    {job.tags.length > 3 && (
+                      <span className="text-gray-400 text-xs px-2 py-1">+{job.tags.length - 3} more</span>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex sm:flex-col items-center sm:items-end gap-3 sm:gap-2">
+                <div className="flex items-center space-x-1">
+                  <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+                  <span className="text-white text-lg font-medium group-hover:text-[#8B5CF6] transition-colors">{job.price} SOL</span>
+                </div>
+                <button className="bg-[#1E1E1E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200 whitespace-nowrap">
+                  HIRE NOW
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <h3 className="text-white font-semibold text-sm mb-2 line-clamp-1 group-hover:text-[#8B5CF6] transition-colors">{job.title}</h3>
-      <p className="text-gray-400 text-xs mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
-      <div className="flex justify-between items-center">
-        <button className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200">
-          HIRE
+    );
+  }
+
+  // Grid view (enhanced mobile responsiveness)
+  return (
+    <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full">
+      <div className="relative h-40 sm:h-48 overflow-hidden">
+        <img
+          src={job.image}
+          alt={job.title}
+          className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
+        />
+        <button className="absolute top-2 right-2 p-1.5 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
+          <img src="/images/bookmark.png" alt="Bookmark" className="w-3 h-3" />
         </button>
-        <div className="flex items-center space-x-1">
-          <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3" />
-          <span className="text-white text-xs font-medium group-hover:text-[#8B5CF6] transition-colors">{job.price} Sol</span>
+      </div>
+      <div className="p-3 sm:p-4">
+        <div
+          className="flex items-center space-x-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={() => onProfileClick(job.freelancer)}
+        >
+          <img
+            src={job.freelancer.avatar}
+            alt={job.freelancer.name}
+            className="w-4 h-4 sm:w-5 sm:h-5 rounded-full flex-shrink-0"
+          />
+          <span className="text-white text-xs sm:text-sm font-medium truncate">{job.freelancer.name}</span>
+        </div>
+        <h3 className="text-white font-semibold text-sm sm:text-base mb-2 line-clamp-2 group-hover:text-[#8B5CF6] transition-colors leading-tight">{job.title}</h3>
+        <p className="text-gray-400 text-xs sm:text-sm mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
+        
+        {job.tags && job.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {job.tags.slice(0, 2).map((tag, index) => (
+              <span key={index} className="bg-[#26272B] text-[#8B5CF6] px-2 py-1 rounded-full text-xs border border-[#333]">
+                {tag}
+              </span>
+            ))}
+            {job.tags.length > 2 && (
+              <span className="text-gray-400 text-xs px-2 py-1">+{job.tags.length - 2}</span>
+            )}
+          </div>
+        )}
+        
+        <div className="flex justify-between items-center">
+          <button className="bg-[#1E1E1E] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded text-xs sm:text-sm hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200">
+            HIRE
+          </button>
+          <div className="flex items-center space-x-1">
+            <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="text-white text-xs sm:text-sm font-medium group-hover:text-[#8B5CF6] transition-colors">{job.price} SOL</span>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
-
+  );
+};
 
 const SearchIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -712,9 +1040,20 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
   const [isPostGigModalOpen, setIsPostGigModalOpen] = useState(false);
   const [isFreelancerModalOpen, setIsFreelancerModalOpen] = useState(false);
   const [selectedFreelancer, setSelectedFreelancer] = useState<Freelancer | null>(null);
-  const [gigs, setGigs] = useState<Job[]>([]);
+  const [allGigs, setAllGigs] = useState<Job[]>([]);
+  const [filteredGigs, setFilteredGigs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(12);
+  const [filters, setFilters] = useState<SearchFilters>({
+    query: '',
+    category: '',
+    minPrice: '',
+    maxPrice: '',
+    sortBy: 'newest'
+  });
   const { connected, publicKey } = useWallet();
   const router = useRouter();
 
@@ -777,7 +1116,7 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
 
         const data = await response.json();
         console.log('Gigs fetched successfully:', data);
-        setGigs(data);
+        setAllGigs(data);
       } catch (err) {
         const error = err instanceof Error ? err.message : 'Failed to fetch gigs';
         console.error('Gig fetch error:', err);
@@ -789,6 +1128,65 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
 
     fetchGigs();
   }, []);
+
+  // Filter and sort gigs
+  useEffect(() => {
+    let filtered = [...allGigs];
+
+    // Apply search query
+    if (filters.query) {
+      const query = filters.query.toLowerCase();
+      filtered = filtered.filter(gig =>
+        gig.title.toLowerCase().includes(query) ||
+        gig.description.toLowerCase().includes(query) ||
+        gig.freelancer.name.toLowerCase().includes(query) ||
+        gig.category?.toLowerCase().includes(query) ||
+        gig.tags?.some(tag => tag.toLowerCase().includes(query))
+      );
+    }
+
+    // Apply category filter
+    if (filters.category) {
+      filtered = filtered.filter(gig => gig.category === filters.category);
+    }
+
+    // Apply price filters
+    if (filters.minPrice) {
+      const minPrice = parseFloat(filters.minPrice);
+      filtered = filtered.filter(gig => gig.price >= minPrice);
+    }
+
+    if (filters.maxPrice) {
+      const maxPrice = parseFloat(filters.maxPrice);
+      filtered = filtered.filter(gig => gig.price <= maxPrice);
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (filters.sortBy) {
+        case 'newest':
+          return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
+        case 'oldest':
+          return new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime();
+        case 'price-low':
+          return a.price - b.price;
+        case 'price-high':
+          return b.price - a.price;
+        case 'title':
+          return a.title.localeCompare(b.title);
+        default:
+          return 0;
+      }
+    });
+
+    setFilteredGigs(filtered);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [allGigs, filters]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredGigs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedGigs = filteredGigs.slice(startIndex, startIndex + itemsPerPage);
 
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-white">
@@ -803,15 +1201,25 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
         <Navbar navItems={navItems} title="" description="" />
       </div>
       <main className="px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-7xl mx-auto relative">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <h1 className="text-3xl sm:text-4xl font-bold">Marketplace</h1>
           <button
             onClick={handleOpenPostGigModal}
-            className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-2 px-4 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5]"
+            className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-2 px-4 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 flex items-center space-x-2"
           >
-            Post a Gig
+            <Plus className="w-4 h-4" />
+            <span>Post a Gig</span>
           </button>
         </div>
+
+        {/* Search and Filters */}
+        <SearchAndFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+          totalResults={filteredGigs.length}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+        />
 
         {isLoading ? (
           <div className="flex justify-center items-center py-12">
@@ -822,24 +1230,59 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
           <Alert className="mb-8 bg-red-500/10 border-red-500/20">
             <AlertDescription className="text-red-400">{error}</AlertDescription>
           </Alert>
-        ) : gigs.length === 0 ? (
+        ) : filteredGigs.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-400 text-lg">No gigs available at the moment.</p>
+            <div className="bg-[#1A1B1E] rounded-lg p-8 border border-[#26272B]">
+              <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-white mb-2">No gigs found</h3>
+              <p className="text-gray-400 text-lg mb-4">
+                {filters.query || filters.category || filters.minPrice || filters.maxPrice
+                  ? "Try adjusting your search filters or browse all gigs."
+                  : "No gigs available at the moment."}
+              </p>
+              {(filters.query || filters.category || filters.minPrice || filters.maxPrice) && (
+                <button
+                  onClick={() => setFilters({ query: '', category: '', minPrice: '', maxPrice: '', sortBy: 'newest' })}
+                  className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-2 px-4 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-            {gigs.map((gig) => (
-              <JobCard
-                key={gig.id}
-                job={gig}
-                onProfileClick={handleProfileClick}
-              />
-            ))}
-          </div>
+          <>
+            {/* Gigs Grid/List */}
+            <div className={
+              viewMode === 'grid'
+                ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6"
+                : "space-y-4"
+            }>
+              {paginatedGigs.map((gig) => (
+                <JobCard
+                  key={gig.id}
+                  job={gig}
+                  onProfileClick={handleProfileClick}
+                  viewMode={viewMode}
+                />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              totalItems={filteredGigs.length}
+              itemsPerPage={itemsPerPage}
+            />
+          </>
         )}
 
         {children}
       </main>
+      
+      {/* Modals */}
       <WalletConnectionModal isOpen={isWalletModalOpen} onClose={() => setIsWalletModalOpen(false)} />
       <PostGigModal isOpen={isPostGigModalOpen} onClose={() => setIsPostGigModalOpen(false)} />
       <FreelancerProfileModal
@@ -847,7 +1290,6 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
         onClose={() => setIsFreelancerModalOpen(false)}
         freelancer={selectedFreelancer}
       />
-    
     </div>
   );
 };

@@ -93,39 +93,65 @@ const ProfilePage = () => {
 
       try {
         const response = await fetch(`/api/profile/check-email?wallet=${encodeURIComponent(publicKey.toString())}`);
-        if (!response.ok) throw new Error('Failed to check verification status');
-        const data = await response.json();
+        
+        // Handle different response scenarios gracefully
+        if (response.ok) {
+          const data = await response.json();
 
-        if (data.isVerified) {
-          setIsEmailVerified(true);
-          setEmail(data.email);
-          setActiveTab('edit');
-          setFormData(prev => ({
-            ...prev,
-            emailVerified: true,
-            email: data.email,
-            username: data.userData?.username || '',
-            name: data.userData?.name || '',
-            bio: data.userData?.bio || '',
-            website: data.userData?.website || '',
-            twitter: data.userData?.twitter || '',
-            linkedin: data.userData?.linkedin || '',
-            discord: data.userData?.discord || '',
-            profileImageUrl: data.userData?.profileImageUrl || '',
-            bannerImageUrl: data.userData?.bannerImageUrl || '',
-            title: data.userData?.jobTitle || '', // Map jobTitle to title
-            skills: data.userData?.skills || '',
-            description: data.userData?.jobDescription || '', // Map jobDescription to description
-            portfolio: data.userData?.portfolio || '',
-            jobBannerImageUrl: data.userData?.jobBannerImageUrl || ''
-          }));
-          setProfileImage(data.userData?.profileImageUrl || null);
-          setBannerImage(data.userData?.bannerImageUrl || null);
-          setJobBannerImage(data.userData?.jobBannerImageUrl || null);
+          if (data.isVerified) {
+            setIsEmailVerified(true);
+            setEmail(data.email);
+            setActiveTab('edit');
+            setFormData(prev => ({
+              ...prev,
+              emailVerified: true,
+              email: data.email,
+              username: data.userData?.username || '',
+              name: data.userData?.name || '',
+              bio: data.userData?.bio || '',
+              website: data.userData?.website || '',
+              twitter: data.userData?.twitter || '',
+              linkedin: data.userData?.linkedin || '',
+              discord: data.userData?.discord || '',
+              profileImageUrl: data.userData?.profileImageUrl || '',
+              bannerImageUrl: data.userData?.bannerImageUrl || '',
+              title: data.userData?.jobTitle || '', // Map jobTitle to title
+              skills: data.userData?.skills || '',
+              description: data.userData?.jobDescription || '', // Map jobDescription to description
+              portfolio: data.userData?.portfolio || '',
+              jobBannerImageUrl: data.userData?.jobBannerImageUrl || ''
+            }));
+            setProfileImage(data.userData?.profileImageUrl || null);
+            setBannerImage(data.userData?.bannerImageUrl || null);
+            setJobBannerImage(data.userData?.jobBannerImageUrl || null);
+          } else {
+            // User exists but email is not verified
+            setIsEmailVerified(false);
+            setActiveTab('verify');
+          }
+        } else if (response.status === 404) {
+          // User doesn't exist yet - this is normal for new users
+          console.log('User not found - new user needs to verify email');
+          setIsEmailVerified(false);
+          setActiveTab('verify');
+        } else {
+          // Other HTTP errors (500, 400, etc.)
+          console.error('API error response:', response.status, response.statusText);
+          // Don't show error to user for these cases, just default to verification tab
+          setIsEmailVerified(false);
+          setActiveTab('verify');
         }
       } catch (error) {
-        console.error('Error checking verification status:', error);
-        showToastAlert('Failed to load profile data', 'error');
+        // Network errors or other fetch failures
+        console.error('Network error checking verification status:', error);
+        // Don't show error to user, just default to verification tab
+        setIsEmailVerified(false);
+        setActiveTab('verify');
+        
+        // Only show error if it seems like a serious issue
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          showToastAlert('Network error. Please check your connection and try again.', 'error');
+        }
       } finally {
         setIsCheckingVerification(false);
       }
@@ -241,35 +267,38 @@ const ProfilePage = () => {
 
     try {
       const checkResponse = await fetch(`/api/profile/check-email?email=${encodeURIComponent(email)}&wallet=${encodeURIComponent(publicKey.toString())}`);
-      const checkResult = await checkResponse.json();
+      
+      if (checkResponse.ok) {
+        const checkResult = await checkResponse.json();
 
-      if (checkResult.isVerified) {
-        setIsEmailVerified(true);
-        setActiveTab('edit');
-        setFormData(prev => ({
-          ...prev,
-          emailVerified: true,
-          email,
-          username: checkResult.userData?.username || '',
-          name: checkResult.userData?.name || '',
-          bio: checkResult.userData?.bio || '',
-          website: checkResult.userData?.website || '',
-          twitter: checkResult.userData?.twitter || '',
-          linkedin: checkResult.userData?.linkedin || '',
-          discord: checkResult.userData?.discord || '',
-          profileImageUrl: checkResult.userData?.profileImageUrl || '',
-          bannerImageUrl: checkResult.userData?.bannerImageUrl || '',
-          title: checkResult.userData?.jobTitle || '',
-          skills: checkResult.userData?.skills || '',
-          description: checkResult.userData?.jobDescription || '',
-          portfolio: checkResult.userData?.portfolio || '',
-          jobBannerImageUrl: checkResult.userData?.jobBannerImageUrl || ''
-        }));
-        setProfileImage(checkResult.userData?.profileImageUrl || null);
-        setBannerImage(checkResult.userData?.bannerImageUrl || null);
-        setJobBannerImage(checkResult.userData?.jobBannerImageUrl || null);
-        setIsVerifyingEmail(false);
-        return;
+        if (checkResult.isVerified) {
+          setIsEmailVerified(true);
+          setActiveTab('edit');
+          setFormData(prev => ({
+            ...prev,
+            emailVerified: true,
+            email,
+            username: checkResult.userData?.username || '',
+            name: checkResult.userData?.name || '',
+            bio: checkResult.userData?.bio || '',
+            website: checkResult.userData?.website || '',
+            twitter: checkResult.userData?.twitter || '',
+            linkedin: checkResult.userData?.linkedin || '',
+            discord: checkResult.userData?.discord || '',
+            profileImageUrl: checkResult.userData?.profileImageUrl || '',
+            bannerImageUrl: checkResult.userData?.bannerImageUrl || '',
+            title: checkResult.userData?.jobTitle || '',
+            skills: checkResult.userData?.skills || '',
+            description: checkResult.userData?.jobDescription || '',
+            portfolio: checkResult.userData?.portfolio || '',
+            jobBannerImageUrl: checkResult.userData?.jobBannerImageUrl || ''
+          }));
+          setProfileImage(checkResult.userData?.profileImageUrl || null);
+          setBannerImage(checkResult.userData?.bannerImageUrl || null);
+          setJobBannerImage(checkResult.userData?.jobBannerImageUrl || null);
+          setIsVerifyingEmail(false);
+          return;
+        }
       }
 
       const otp = generateOTP();
@@ -289,12 +318,19 @@ const ProfilePage = () => {
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to send OTP');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to send OTP');
+      }
 
       setIsVerificationModalOpen(true);
     } catch (error) {
-      setVerificationError('Failed to send verification code. Please try again.');
       console.error('Verification error:', error);
+      setVerificationError(
+        error instanceof Error 
+          ? error.message 
+          : 'Failed to send verification code. Please try again.'
+      );
     } finally {
       setIsVerifyingEmail(false);
     }
@@ -330,8 +366,32 @@ const ProfilePage = () => {
         });
 
         if (!response.ok) {
-          const errorData = await response.json() as ApiError;
-          throw new Error(errorData.message || 'Failed to update verification status');
+          try {
+            const errorData = await response.json() as ApiError;
+            const errorMessage = errorData.message || 'Failed to update verification status';
+            
+            // Handle specific error cases
+            if (errorMessage.includes('email is already associated')) {
+              setVerificationError('This email is already linked to another wallet. Please use a different email address.');
+              // Clear the email field and close modal so user can try with different email
+              setEmail('');
+              setIsVerificationModalOpen(false);
+              setVerificationCode('');
+              setCachedOTP('');
+              setOtpExpiry(0);
+              setCountdown(0);
+            } else if (errorMessage.includes('username is already taken')) {
+              setVerificationError('Username already exists. Please try with a different email or contact support.');
+            } else {
+              setVerificationError(errorMessage);
+            }
+            return;
+          } catch (parseError) {
+            // If we can't parse the error response, show generic message
+            console.error('Error parsing API response:', parseError);
+            setVerificationError('Server error occurred. Please try again later.');
+            return;
+          }
         }
 
         const userData = await response.json();
@@ -369,15 +429,8 @@ const ProfilePage = () => {
 
         showToastAlert('Email verification successful!', 'success');
       } catch (error) {
-        console.error('Error updating verification status:', error);
-        if (error instanceof Error) {
-          setVerificationError(error.message);
-          if (error.message.includes('email is already')) {
-            setEmail('');
-          }
-        } else {
-          setVerificationError('Failed to update verification status. Please try again.');
-        }
+        console.error('Network error during verification:', error);
+        setVerificationError('Network error occurred. Please check your connection and try again.');
       }
     } else {
       setVerificationError('Invalid verification code. Please try again.');
