@@ -4,6 +4,11 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Type guard to check if error is a Prisma error
+function isPrismaError(error: unknown): error is { code: string; message: string } {
+  return typeof error === 'object' && error !== null && 'code' in error;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { id } = req.query;
 
@@ -143,7 +148,8 @@ async function updateGig(req: NextApiRequest, res: NextApiResponse, gigId: strin
   } catch (error) {
     console.error('Error updating gig:', error);
     
-    if (error.code === 'P2025') {
+    // Type-safe error handling
+    if (isPrismaError(error) && error.code === 'P2025') {
       return res.status(404).json({ error: 'Gig not found' });
     }
     
@@ -201,7 +207,8 @@ async function deleteGig(req: NextApiRequest, res: NextApiResponse, gigId: strin
   } catch (error) {
     console.error('Error deleting gig:', error);
     
-    if (error.code === 'P2025') {
+    // Type-safe error handling
+    if (isPrismaError(error) && error.code === 'P2025') {
       return res.status(404).json({ error: 'Gig not found' });
     }
     
