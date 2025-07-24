@@ -1,5 +1,108 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'GET') {
+    console.error('Invalid method:', req.method);
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { wallet, email } = req.query;
+
+    console.log('Received query:', { wallet, email });
+
+    if (!wallet || typeof wallet !== 'string') {
+      console.error('Invalid wallet parameter:', wallet);
+      return res.status(400).json({ error: 'Wallet address is required and must be a string' });
+    }
+
+    const decodedWallet = decodeURIComponent(wallet);
+    const decodedEmail = email ? decodeURIComponent(email as string) : null;
+
+    const user = await prisma.user.findUnique({
+      where: { walletAddress: decodedWallet },
+      select: {
+        id: true,
+        email: true,
+        emailVerified: true,
+        username: true,
+        name: true,
+        bio: true,
+        website: true,
+        twitter: true,
+        linkedin: true,
+        discord: true,
+        profileImage: true,
+        bannerImage: true,
+        jobProfile: {
+          select: {
+            title: true,
+            skills: true,
+            description: true,
+            portfolio: true,
+            bannerImage: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      console.error('User not found for wallet:', decodedWallet);
+      return res.status(404).json({ error: 'User not found for the provided wallet address' });
+    }
+
+    console.log('User found:', {
+      id: user.id,
+      emailVerified: user.emailVerified,
+      email: user.email,
+      username: user.username
+    });
+
+    const isVerified = user.emailVerified && (!decodedEmail || user.email === decodedEmail);
+    const userData = {
+      username: user.username || '',
+      name: user.name || '',
+      bio: user.bio || '',
+      website: user.website || '',
+      twitter: user.twitter || '',
+      linkedin: user.linkedin || '',
+      discord: user.discord || '',
+      profileImageUrl: user.profileImage || '',
+      bannerImageUrl: user.bannerImage || '',
+      jobTitle: user.jobProfile?.title || '',
+      skills: user.jobProfile?.skills ? user.jobProfile.skills.join(', ') : '',
+      jobDescription: user.jobProfile?.description || '',
+      portfolio: user.jobProfile?.portfolio || '',
+      jobBannerImageUrl: user.jobProfile?.bannerImage || ''
+    };
+
+    return res.status(200).json({
+      isVerified,
+      email: user.email || '',
+      userData
+    });
+  } catch (error) {
+    console.error('Check-email error:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    return res.status(500).json({
+      error: 'Failed to check email verification',
+      details: error instanceof Error ? error.message : 'Unknown server error'
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+
+
+
+/*import { NextApiRequest, NextApiResponse } from 'next';
+import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 
 const prisma = new PrismaClient();
@@ -168,4 +271,4 @@ export default async function handler(
   } finally {
     await prisma.$disconnect();
   }
-}
+}*/

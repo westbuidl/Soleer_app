@@ -6,6 +6,7 @@ import "@/app/globals.css";
 import ComingSoonModal from '../../pages/ComingSoonModal';
 import { Plus, UploadCloud, X, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useRouter } from 'next/navigation';
 
 import {
   ConnectionProvider,
@@ -69,21 +70,84 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
     image: null as File | null,
     subject: '',
     description: '',
-    amount: ''
+    amount: '',
+    category: '',
+    tags: '' as string | string[],
   });
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [toastAlert, setToastAlert] = useState<ToastAlert | null>(null);
+  const { publicKey, connected } = useWallet();
+  const router = useRouter();
 
   const showToast = (type: ToastType, message: string) => {
     setToastAlert({ type, message });
-    setTimeout(() => setToastAlert(null), 5000); // Hide after 5 seconds
+    setTimeout(() => setToastAlert(null), 5000);
   };
+
+  // Check verification status with better error handling
+  useEffect(() => {
+    const checkVerification = async () => {
+      if (!publicKey || !connected) {
+        return;
+      }
+
+      try {
+        const walletAddress = publicKey.toString();
+        const response = await fetch(`/api/profile/check-email?wallet=${encodeURIComponent(walletAddress)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Verification check failed:', response.status, errorText);
+          
+          if (response.status === 404) {
+            showToast('error', 'User not found. Please complete your profile setup.');
+            setTimeout(() => {
+              router.push('/profile');
+            }, 2000);
+            return;
+          }
+          
+          throw new Error(`HTTP ${response.status}: ${errorText || 'Failed to check verification status'}`);
+        }
+        
+        const data = await response.json();
+        if (!data.isVerified) {
+          showToast('error', 'Please verify your email before posting a gig');
+          setTimeout(() => {
+            router.push('/profile');
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('Verification check error:', error);
+        setError('Failed to check verification status. Please try again.');
+        showToast('error', 'Failed to check verification status');
+      }
+    };
+
+    if (connected && publicKey && isOpen) {
+      checkVerification();
+    }
+  }, [publicKey, connected, router, isOpen]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('error', 'Image size must be less than 10MB');
+        return;
+      }
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        showToast('error', 'Please upload a valid image file (JPEG, PNG, GIF, or WebP)');
+        return;
+      }
       setFormData({ ...formData, image: file });
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -97,18 +161,28 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      
+      console.log('Uploading file:', { name: file.name, size: file.size, type: file.type });
+
       const response = await fetch('/api/upload', {
         method: 'POST',
-        body: formData
+        body: formData,
       });
-      
-      if (!response.ok) throw new Error('Image upload failed');
-      
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Image upload failed (Status: ${response.status})`);
+      }
+
       const data = await response.json();
+      if (!data.url) {
+        throw new Error('No URL returned from server');
+      }
+
+      console.log('Image uploaded successfully:', data.url);
       return data.url;
     } catch (error) {
-      throw new Error('Failed to upload image');
+      console.error('Image upload error:', error);
+      throw error instanceof Error ? error : new Error('Failed to upload image');
     }
   };
 
@@ -118,48 +192,133 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
     setIsLoading(true);
 
     try {
-      if (!formData.subject || !formData.description || !formData.amount) {
-        throw new Error('Please fill in all required fields');
+      if (!publicKey) {
+        throw new Error('Please connect your wallet to post a gig');
       }
+
+      if (!formData.subject || !formData.description || !formData.amount) {
+        throw new Error('Please fill in all required fields (Subject, Description, Amount)');
+      }
+
+      const amount = parseFloat(formData.amount);
+      if (isNaN(amount) || amount <= 0 || amount > 1000) {
+        throw new Error('Please enter a valid amount between 0.01 and 1000 SOL');
+      }
+
+      const walletAddress = publicKey.toString();
+      console.log('Fetching user for wallet:', walletAddress);
+
+      // Verify user and get User.id with better error handling
+      const userResponse = await fetch(`/api/users?wallet=${encodeURIComponent(walletAddress)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!userResponse.ok) {
+        const errorText = await userResponse.text();
+        console.error('User fetch failed:', userResponse.status, errorText);
+        
+        if (userResponse.status === 404) {
+          throw new Error('User not found. Please register your wallet first.');
+        }
+        
+        throw new Error(`Failed to fetch user: HTTP ${userResponse.status}`);
+      }
+
+      let userData;
+      try {
+        userData = await userResponse.json();
+      } catch (parseError) {
+        console.error('Failed to parse user response:', parseError);
+        throw new Error('Invalid response from server');
+      }
+
+      if (!userData || !userData.id) {
+        console.error('Invalid user data received:', userData);
+        throw new Error('User not found or invalid user data. Please register your wallet.');
+      }
+
+      if (!userData.emailVerified) {
+        throw new Error('Please verify your email before posting a gig');
+      }
+
+      console.log('User verified, proceeding with gig creation for user ID:', userData.id);
+
+      const tags = Array.isArray(formData.tags)
+        ? formData.tags
+        : formData.tags
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0);
 
       let imageUrl = null;
       if (formData.image) {
         imageUrl = await uploadImage(formData.image);
       }
 
+      const gigData = {
+        title: formData.subject,
+        description: formData.description,
+        amount,
+        image: imageUrl,
+        status: 'ACTIVE',
+        userId: userData.id, // Use User.id (cuid), not walletAddress
+        category: formData.category || null,
+        tags,
+      };
+
+      console.log('Creating gig with data:', gigData);
+
       const response = await fetch('/api/gigs', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title: formData.subject,
-          description: formData.description,
-          amount: parseFloat(formData.amount),
-          image: imageUrl,
-          status: 'ACTIVE'
-        }),
+        body: JSON.stringify(gigData),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create gig');
+        const errorText = await response.text();
+        console.error('Gig creation failed:', response.status, errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          throw new Error(`Failed to create gig: HTTP ${response.status}`);
+        }
+        
+        throw new Error(errorData.error || 'Failed to create gig');
       }
 
       showToast('success', 'Gig Posted Successfully! 🎉');
-
       setFormData({
         image: null,
         subject: '',
         description: '',
-        amount: ''
+        amount: '',
+        category: '',
+        tags: '',
       });
       setPreviewUrl(null);
-      onClose();
-
+      setTimeout(() => {
+        onClose();
+      }, 1500);
     } catch (err) {
       const error = err as Error;
+      console.error('Gig creation error:', error);
       setError(error.message);
       showToast('error', error.message);
+      
+      if (error.message.includes('email verification') || 
+          error.message.includes('User not found') ||
+          error.message.includes('register your wallet')) {
+        setTimeout(() => {
+          router.push('/profile');
+        }, 2000);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -169,19 +328,24 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-[#1A1B1E] rounded-lg w-full max-w-lg relative">
+      <div className="bg-[#1A1B1E] rounded-lg w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
         {toastAlert && (
-          <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded ${
-            toastAlert.type === 'success' ? 'bg-green-500' : 
-            toastAlert.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
-          } text-white`}>
+          <div
+            className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${
+              toastAlert.type === 'success'
+                ? 'bg-green-500'
+                : toastAlert.type === 'error'
+                ? 'bg-red-500'
+                : 'bg-blue-500'
+            } text-white text-sm font-medium`}
+          >
             {toastAlert.message}
           </div>
         )}
-        
+
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-gray-400 hover:text-white"
+          className="absolute right-4 top-4 text-gray-400 hover:text-white z-10"
           disabled={isLoading}
         >
           <X size={24} />
@@ -189,40 +353,45 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
 
         <div className="p-6">
           <h2 className="text-xl font-bold text-white mb-6">Post a New Gig</h2>
-          
+
+          {error && (
+            <Alert className="mb-4 bg-red-500/10 border-red-500/20">
+              <AlertDescription className="text-red-400">{error}</AlertDescription>
+            </Alert>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Image Upload */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
-                Gig Image
+                Gig Image <span className="text-gray-400">(optional)</span>
               </label>
-              <div className="border-2 border-dashed border-gray-600 rounded-lg p-4">
+              <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 hover:border-gray-500 transition-colors">
                 {previewUrl ? (
                   <div className="relative">
-                    <img 
-                      src={previewUrl} 
-                      alt="Preview" 
-                      className="w-full h-48 object-cover rounded-lg"
-                    />
+                    <img src={previewUrl} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
                     <button
                       type="button"
                       onClick={() => {
                         setPreviewUrl(null);
                         setFormData({ ...formData, image: null });
                       }}
-                      className="absolute top-2 right-2 bg-red-500 p-1 rounded-full"
+                      className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 p-1 rounded-full transition-colors"
                       disabled={isLoading}
                     >
                       <X size={16} className="text-white" />
                     </button>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center h-48 cursor-pointer">
+                  <label className="flex flex-col items-center justify-center h-48 cursor-pointer hover:bg-gray-800/20 rounded-lg transition-colors">
                     <UploadCloud className="w-12 h-12 text-gray-400 mb-2" />
-                    <span className="text-gray-400 text-sm">Click to upload image</span>
+                    <span className="text-gray-400 text-sm text-center">
+                      Click to upload image
+                      <br />
+                      <span className="text-xs">Max 10MB • JPEG, PNG, GIF, WebP</span>
+                    </span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
                       onChange={handleImageChange}
                       className="hidden"
                       disabled={isLoading}
@@ -232,69 +401,103 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            {/* Subject */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
-                Subject
+                Subject <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={formData.subject}
                 onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none"
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
                 placeholder="Enter gig subject"
                 disabled={isLoading}
                 required
+                maxLength={100}
               />
+              <p className="text-xs text-gray-500 mt-1">{formData.subject.length}/100 characters</p>
             </div>
 
-            {/* Description */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
-                Description
+                Description <span className="text-red-400">*</span>
               </label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full bg-[#26272B] text-white rounded-lg p-3 h-32 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none"
-                placeholder="Describe your gig"
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 h-32 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent resize-none"
+                placeholder="Describe your gig in detail"
                 disabled={isLoading}
                 required
+                maxLength={500}
+              />
+              <p className="text-xs text-gray-500 mt-1">{formData.description.length}/500 characters</p>
+            </div>
+
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Category <span className="text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                placeholder="e.g., Smart Contract Development"
+                disabled={isLoading}
+                maxLength={50}
               />
             </div>
 
-            {/* Amount */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
-                Amount (SOL)
+                Tags <span className="text-gray-400">(optional, comma-separated)</span>
+              </label>
+              <input
+                type="text"
+                value={Array.isArray(formData.tags) ? formData.tags.join(', ') : formData.tags}
+                onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                placeholder="e.g., blockchain, solidity, web3"
+                disabled={isLoading}
+                maxLength={200}
+              />
+              <p className="text-xs text-gray-500 mt-1">Separate tags with commas</p>
+            </div>
+
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Amount (SOL) <span className="text-red-400">*</span>
               </label>
               <div className="relative">
                 <input
                   type="number"
                   value={formData.amount}
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none"
-                  placeholder="Enter amount"
-                  step="0.1"
-                  min="0"
+                  className="w-full bg-[#26272B] text-white rounded-lg p-3 pr-16 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0.01"
+                  max="1000"
                   disabled={isLoading}
                   required
                 />
-                <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                  SOL
-                </span>
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
+                  <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+                  <span className="text-gray-400 text-sm">SOL</span>
+                </div>
               </div>
             </div>
 
             <button
               type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 flex items-center justify-center"
+              disabled={isLoading || !formData.subject || !formData.description || !formData.amount}
+              className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center"
             >
               {isLoading ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Posting Gig...
+                  Processing...
                 </>
               ) : (
                 'Post Gig'
@@ -307,16 +510,12 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
   );
 };
 
-
-
 const FreelancerProfileModal: React.FC<FreelancerProfileModalProps> = ({ isOpen, onClose, freelancer }) => {
   if (!isOpen || !freelancer) return null;
 
   return (
-
     <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center">
       <div className="bg-[#1A1B1E] rounded-lg w-full max-w-md relative">
-        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute right-4 top-4 text-gray-400 hover:text-white"
@@ -401,69 +600,31 @@ const FreelancerProfileModal: React.FC<FreelancerProfileModalProps> = ({ isOpen,
   );
 };
 
-const WalletConnectionModal: React.FC<{ 
-  isOpen: boolean; 
-  onClose: () => void 
-}> = ({ isOpen, onClose }) => {
-  const { connected, wallet } = useWallet();
-
-  // Prevent closing if not connected
-  const handleClose = () => {
-    if (connected) {
-      onClose();
-    }
-  };
-
+const WalletConnectionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 z-[150] flex items-center justify-center backdrop-blur-sm">
-      <div className="bg-gradient-to-br from-[#1A1B1E] to-[#26272B] rounded-2xl p-8 w-full max-w-md relative border border-[#8B5CF6]/20 shadow-xl">
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold mb-2 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-transparent bg-clip-text">
-            Connect Wallet
-          </h2>
-          <p className="text-gray-400 mb-6">
-            {connected 
-              ? `Connected with ${wallet?.adapter.name}` 
-              : "Join the decentralized marketplace"}
-          </p>
-
-          {!connected ? (
-            <div className="bg-[#0D0D0D] p-6 rounded-xl mb-6 border border-[#8B5CF6]/10">
-              <div className="flex justify-center mb-4">
-                <img src="/images/Soleer.png" alt="Solana" className="w-12 h-12" />
-              </div>
-              <div className="flex justify-center">
-                <WalletMultiButton 
-                  className="!bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] hover:from-[#7C3AED] hover:to-[#6B2CF5] !transition-all !duration-200 !rounded-xl !px-8 !py-3"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="bg-[#0D0D0D] p-6 rounded-xl mb-6 border border-[#8B5CF6]/10 flex flex-col items-center space-y-4">
-              <WalletDisconnectButton 
-                className="!bg-red-600 !rounded-xl !px-8 !py-3"
-              />
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {['Access to exclusive gigs', 'Secure blockchain payments', 'Decentralized escrow system'].map((feature, index) => (
-              <div key={index} className="flex items-center space-x-3 text-gray-400">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] flex items-center justify-center">
-                  <span className="text-white text-sm">✓</span>
-                </div>
-                <span>{feature}</span>
-              </div>
-            ))}
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-gradient-to-b from-[#1A1B1E] to-[#2C2C2E] rounded-lg w-full max-w-md p-6 relative">
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 text-gray-400 hover:text-white"
+        >
+          <X size={24} />
+        </button>
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-white mb-4">Connect Your Wallet</h2>
+          <p className="text-gray-400 mb-6">Please connect your Solana wallet to continue.</p>
+          <div className="flex justify-center">
+            <WalletMultiButton
+              className="!bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] hover:from-[#7C3AED] hover:to-[#6B2CF5] !transition-all !duration-200 !rounded-xl !px-8 !py-3"
+            />
           </div>
         </div>
       </div>
     </div>
   );
 };
-
 
 const ZapIcon: React.FC = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -478,18 +639,18 @@ const StarIcon: React.FC = () => (
 );
 
 const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick }) => (
-  <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B]">
-    <div className="relative h-[200px]">
+  <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-lg transition-shadow">
+    <div className="relative h-[140px]">
       <img
         src={job.image}
         alt={job.title}
         className="w-full h-full object-cover"
       />
-      <button className="absolute top-3 right-3 p-1.5 bg-[#26272B] rounded">
-        <img src="/images/bookmark.png" alt="Bookmark" className="w-4 h-4" />
+      <button className="absolute top-2 right-2 p-1 bg-[#26272B] rounded">
+        <img src="/images/bookmark.png" alt="Bookmark" className="w-3 h-3" />
       </button>
     </div>
-    <div className="p-4">
+    <div className="p-3">
       <div
         className="flex items-center space-x-2 mb-2 cursor-pointer"
         onClick={() => onProfileClick(job.freelancer)}
@@ -497,31 +658,31 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick }) => (
         <img
           src={job.freelancer.avatar}
           alt={job.freelancer.name}
-          className="w-6 h-6 rounded-full"
+          className="w-5 h-5 rounded-full"
         />
-        <span className="text-white text-sm">{job.freelancer.name}</span>
+        <span className="text-white text-xs font-medium truncate">{job.freelancer.name}</span>
       </div>
-      <h3 className="text-white font-bold mb-2">{job.title}</h3>
-      <p className="text-gray-400 text-sm mb-4 line-clamp-2">{job.description}</p>
+      <h3 className="text-white font-semibold text-sm mb-2 line-clamp-1">{job.title}</h3>
+      <p className="text-gray-400 text-xs mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
       <div className="flex justify-between items-center">
-        <button className="bg-[#1E1E1E] text-white px-4 py-1.5 rounded text-sm hover:bg-[#2A2A2A]">
+        <button className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#2A2A2A] transition-colors">
           HIRE
         </button>
-        <div className="flex items-center space-x-1.5">
-          <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
-          <span className="text-white text-sm">{job.price} Sol</span>
+        <div className="flex items-center space-x-1">
+          <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3" />
+          <span className="text-white text-xs font-medium">{job.price} Sol</span>
         </div>
       </div>
     </div>
   </div>
 );
+
 const SearchIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="11" cy="11" r="8"></circle>
     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
   </svg>
 );
-
 
 const HeroWithWallet: React.FC = () => {
   const endpoint = clusterApiUrl('devnet');
@@ -541,306 +702,153 @@ const HeroWithWallet: React.FC = () => {
   );
 };
 
-const Hero: React.FC = () => {
-  const [isWalletModalOpen, setIsWalletModalOpen] = useState(true);
-  const [isComingSoonModalOpen, setIsComingSoonModalOpen] = useState(false);
+interface HeroProps {
+  children?: React.ReactNode;
+}
+
+const Hero: React.FC<HeroProps> = ({ children }) => {
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isPostGigModalOpen, setIsPostGigModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('trending');
+  const [isFreelancerModalOpen, setIsFreelancerModalOpen] = useState(false);
   const [selectedFreelancer, setSelectedFreelancer] = useState<Freelancer | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const { connected } = useWallet();
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsComingSoonModalOpen(true);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (connected) {
-      setIsWalletModalOpen(false);
-    }
-  }, [connected]);
-
+  const [gigs, setGigs] = useState<Job[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const { connected, publicKey } = useWallet();
+  const router = useRouter();
 
   const navItems = [
-    { title: 'DASHBOARD', href: '../profile' },
-    { title: 'INBOX', href: '../inbox' },
-    { title: 'PROFILE', href: '../profile' },
+    { title: 'DASHBOARD', href: '/dashboard' },
+    { title: 'INBOX', href: '/inbox' },
+    { title: 'PROFILE', href: '/profile' },
+    { title: 'MARKETPLACE', href: '/' },
     { title: 'SOLEER HOME', href: 'https://www.soleer.xyz' },
     { title: 'FAQ', href: 'https://www.soleer.xyz/faq' },
   ];
 
+  const handleOpenPostGigModal = async () => {
+    if (!connected) {
+      setIsWalletModalOpen(true);
+      return;
+    }
 
-  const jobs = [
-    {
-      id: '1',
-      image: '../images/ads/ad1.png',
-      title: 'Smart Contract Dev',
-      description: 'I will Write and audit smart contracts for platforms like Ethereum, Solana, and Polkadot....',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
+    try {
+      const response = await fetch(`/api/profile/check-email?wallet=${encodeURIComponent(publicKey?.toString() || '')}`);
+      if (!response.ok) {
+        throw new Error('Failed to check verification status');
       }
-    },
-    {
-      //{ image: '/images/ads/ad2.png', title: 'Web3 UI/UX Design', price: '3.5 Sol', user: 'Soleer', userUrl: '/user/soleer', description: 'I will Create digital arts, collectibles, and content to be sold as NFTs...', descriptionUrl: '/gig/web3-ui-ux-design' },
-
-      id: '2',
-      image: '../images/ads/ad2.png',
-      title: 'Web3 UI/UX Design',
-      description: 'I will Create digital arts, collectibles, and content to be sold as NFTs...',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
+      const data = await response.json();
+      if (!data.isVerified) {
+        router.push('/profile');
+      } else {
+        setIsPostGigModalOpen(true);
       }
-    },
-    {
-      //{ image: '/images/ads/ad3.png', title: 'Content Creation', price: '4 Sol', user: 'Soleer', userUrl: '/user/soleer', description: 'I Write articles, tutorials, and educational contents on everything blockchain..', descriptionUrl: '/gig/content-creation' },
-      id: '3',
-      image: '../images/ads/ad3.png',
-      title: 'Content Creation',
-      description: 'I Write articles, tutorials, and educational contents on everything blockchain...',
-      price: 2.5,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
-      }
-    },
-    {
-      //{ image: '/images/ads/ad4.png', title: 'Security Auditing', price: '5 Sol', user: 'Soleer', userUrl: '/user/soleer', description: 'I Conduct security audits for smart contracts, blockchain protocols, and Web3 applications...', descriptionUrl: '/gig/security-auditing' },
-      id: '4',
-      image: '../images/ads/ad4.png',
-      title: 'Security Auditing',
-      description: 'I Conduct security audits for smart contracts, blockchain protocols, and Web3 applications...',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
-      }
-    },
-    {
-      //{ image: '/images/ads/ad5.png', title: 'Tokenomics Consulting', price: '2 Sol', user: 'Soleer', userUrl: '/user/soleer', description: 'I will Designing and optimizing the economic model for your blockchain-based projects..', descriptionUrl: '/gig/tokenomics-consulting' },
-      id: '5',
-      image: '../images/ads/ad5.png',
-      title: 'Tokenomics Consulting',
-      description: 'I will Designing and optimizing the economic model for your blockchain-based projects..',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
-      }
-    },
-    // Repeat the first 5 jobs to fill out the grid
-    {
-      id: '6',
-      image: '../images/ads/ad1.png',
-      title: 'Smart Contract Dev',
-      description: 'I will Write and audit smart contracts for platforms like Ethereum, Solana, and Polkadot....',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
-      }
-    },
-    {
-      id: '7',
-      image: '../images/ads/ad1.png',
-      title: 'Smart Contract Dev',
-      description: 'I will Write and audit smart contracts for platforms like Ethereum, Solana, and Polkadot....',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
-      }
-    },
-    {
-      id: '8',
-      image: '../images/ads/ad1.png',
-      title: 'Smart Contract Dev',
-      description: 'I will Write and audit smart contracts for platforms like Ethereum, Solana, and Polkadot....',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
-      }
-    },
-    {
-      id: '9',
-      image: '../images/ads/ad1.png',
-      title: 'Smart Contract Dev',
-      description: 'I will Write and audit smart contracts for platforms like Ethereum, Solana, and Polkadot....',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
-      }
-    },
-    {
-      //{ image: '/images/ads/ad1.png', title: 'Smart Contract Dev', price: '4 Sol', user: 'Soleer', userUrl: 'marketplace', description: 'I will Write and audit smart contracts for platforms like Ethereum, Solana, and Polkadot....', descriptionUrl: '/gig/smart-contract-dev' },
-      id: '10',
-      image: '../images/ads/ad1.png',
-      title: 'Smart Contract Dev',
-      description: 'I will Write and audit smart contracts for platforms like Ethereum, Solana, and Polkadot....',
-      price: 8,
-      freelancer: {
-        name: 'Freexyz',
-        avatar: '../images/user.png'
-      }
-    },
-    // Add more jobs as needed to fill out the grid
-  ];
-
-
-  const ITEMS_PER_PAGE = 15;
-  const totalPages = Math.ceil(jobs.length / ITEMS_PER_PAGE);
-
-  const handleProfileClick = (freelancer: Freelancer): void => {
-    setSelectedFreelancer(() => freelancer);
+    } catch (error) {
+      console.error('Error checking verification:', error);
+      router.push('/profile');
+    }
   };
 
-  const filteredJobs = useCallback(() => {
-    if (!searchQuery.trim()) return jobs;
+  const handleProfileClick = useCallback((freelancer: Freelancer) => {
+    setSelectedFreelancer(freelancer);
+    setIsFreelancerModalOpen(true);
+  }, []);
 
-    const searchTerms = searchQuery.toLowerCase().split(' ');
-    return jobs.filter(job => {
-      const searchableText = `${job.title} ${job.description} ${job.freelancer.name}`.toLowerCase();
-      return searchTerms.every(term => searchableText.includes(term));
-    });
-  }, [searchQuery]);
+  // Fetch all gigs
+  useEffect(() => {
+    const fetchGigs = async () => {
+      setIsLoading(true);
+      setError('');
 
-  const paginatedJobs = filteredJobs().slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+      try {
+        const response = await fetch('/api/gigs', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
 
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Failed to fetch gigs:', response.status, errorText);
+          throw new Error(`Failed to fetch gigs: HTTP ${response.status}`);
+        }
 
+        const data = await response.json();
+        console.log('Gigs fetched successfully:', data);
+        setGigs(data);
+      } catch (err) {
+        const error = err instanceof Error ? err.message : 'Failed to fetch gigs';
+        console.error('Gig fetch error:', err);
+        setError(error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchGigs();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#0D0D0D]">
-      <Navbar
-        navItems={navItems}
-        title="Soleer Marketplace"
-        description="Find and hire top freelancers on the blockchain"
+    <div className="min-h-screen bg-[#0A0A0B] text-white">
+      <div
+        className="fixed inset-0 pointer-events-none bg-cover bg-center bg-no-repeat opacity-70"
+        style={{
+          backgroundImage: 'url("/images/Ellipse-why.png")',
+          backgroundBlendMode: 'overlay',
+        }}
       />
+      <div className="relative z-50">
+        <Navbar navItems={navItems} title="" description="" />
+      </div>
+      <main className="px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-7xl mx-auto relative">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl sm:text-4xl font-bold">Marketplace</h1>
+          <button
+            onClick={handleOpenPostGigModal}
+            className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-2 px-4 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5]"
+          >
+            Post a Gig
+          </button>
+        </div>
 
-      <WalletConnectionModal
-        isOpen={isWalletModalOpen}
-        onClose={() => setIsWalletModalOpen(false)}
-      />
-
-      {connected ? (
-        <main className="container mx-auto px-3 sm:px-4">
-          {/* Sticky header with optimized mobile spacing */}
-          <div className="sticky top-16 sm:top-20 bg-[#0D0D0D] pt-4 sm:pt-6 pb-3 sm:pb-4 z-20">
-            {/* Add Post Gig button */}
-            <div className="flex justify-end mb-4">
-              <button
-                onClick={() => setIsPostGigModalOpen(true)}
-                className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200"
-              >
-                <Plus size={20} />
-                <span>Post Gig</span>
-              </button>
-            </div>
-
-            {/* Search bar with mobile optimization */}
-            <div className="relative mb-4 sm:mb-6">
-              <input
-                type="text"
-                placeholder="Search for jobs to hire"
-                className="w-full bg-[#1A1B1E] p-2 sm:p-3 pl-8 sm:pl-10 rounded-lg text-white placeholder-gray-400 text-sm sm:text-base"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <div className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                <SearchIcon />
-              </div>
-            </div>
-
-            {/* Filter buttons with mobile optimization */}
-            <div className="flex space-x-4 sm:space-x-6 mb-4 sm:mb-6">
-              <button
-                className={`flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded text-sm sm:text-base ${
-                  activeTab === 'trending' ? 'text-[#8B5CF6]' : 'text-gray-400'
-                }`}
-                onClick={() => setActiveTab('trending')}
-              >
-                <span className="text-base sm:text-lg">⚡</span>
-                <span>Trending</span>
-              </button>
-              <button
-                className={`flex items-center space-x-1 sm:space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded text-sm sm:text-base ${
-                  activeTab === 'popular' ? 'text-[#8B5CF6]' : 'text-gray-400'
-                }`}
-                onClick={() => setActiveTab('popular')}
-              >
-                <span className="text-base sm:text-lg">⭐</span>
-                <span>Popular</span>
-              </button>
-            </div>
+        {isLoading ? (
+          <div className="flex justify-center items-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-[#8B5CF6]" />
+            <span className="ml-2 text-white">Loading gigs...</span>
           </div>
-
-          {/* Updated grid layout for mobile optimization */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-6 relative z-0">
-            {paginatedJobs.map(job => (
+        ) : error ? (
+          <Alert className="mb-8 bg-red-500/10 border-red-500/20">
+            <AlertDescription className="text-red-400">{error}</AlertDescription>
+          </Alert>
+        ) : gigs.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-400 text-lg">No gigs available at the moment.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {gigs.map((gig) => (
               <JobCard
-                key={job.id}
-                job={job}
+                key={gig.id}
+                job={gig}
                 onProfileClick={handleProfileClick}
               />
             ))}
           </div>
+        )}
 
-          {/* Pagination with mobile optimization */}
-          {totalPages > 1 && (
-            <div className="flex justify-center mt-6 sm:mt-8 space-x-1 sm:space-x-2 pb-6">
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button
-                  key={i + 1}
-                  onClick={() => setCurrentPage(i + 1)}
-                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded text-xs sm:text-base ${
-                    currentPage === i + 1
-                      ? 'bg-[#8B5CF6] text-white'
-                      : 'bg-[#1A1B1E] text-gray-400 hover:bg-[#26272B]'
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-          )}
-           <PostGigModal 
-            isOpen={isPostGigModalOpen}
-            onClose={() => setIsPostGigModalOpen(false)}
-          />
-
-        </main>
-      ) : (
-        <div className="container mx-auto px-3 sm:px-4 pt-16 sm:pt-20 text-center">
-          <div className="max-w-2xl mx-auto">
-            <h1 className="text-3xl sm:text-4xl font-bold mb-3 sm:mb-4 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-transparent bg-clip-text">
-              Welcome to Soleer Marketplace
-            </h1>
-            <p className="text-gray-400 text-lg sm:text-xl mb-6 sm:mb-8">
-              Connect your wallet to access the decentralized freelance marketplace
-            </p>
-            <div className="flex justify-center">
-              <WalletMultiButton className="!bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] hover:from-[#7C3AED] hover:to-[#6B2CF5] !transition-all !duration-200 !rounded-xl !px-6 sm:!px-8 !py-2.5 sm:!py-3" />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <Footer />
+        {children}
+      </main>
+      <WalletConnectionModal isOpen={isWalletModalOpen} onClose={() => setIsWalletModalOpen(false)} />
+      <PostGigModal isOpen={isPostGigModalOpen} onClose={() => setIsPostGigModalOpen(false)} />
+      <FreelancerProfileModal
+        isOpen={isFreelancerModalOpen}
+        onClose={() => setIsFreelancerModalOpen(false)}
+        freelancer={selectedFreelancer}
+      />
+    
     </div>
   );
 };
 
 export default HeroWithWallet;
-

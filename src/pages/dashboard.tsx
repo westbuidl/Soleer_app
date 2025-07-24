@@ -1,17 +1,30 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Footer from "@/components/sections/Footer";
 import Navbar from "@/components/common/Navbar";
-import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import "../app/globals.css";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useRouter } from 'next/router';
 
 // Interface definitions
+interface Gig {
+  id: number;
+  title: string;
+  description: string;
+  image: string | null;
+  amount: number;
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+}
+
 interface GigCardProps {
   image: string;
   status: 'completed' | 'active';
+  title: string;
+  description: string;
+  price: number;
 }
+
 interface Tab {
   id: string;
   label: string;
@@ -89,11 +102,16 @@ const TimeRangeDropdown: React.FC<TimeRangeDropdownProps> = ({ selectedRange, on
       )}
     </div>
   );
-}
-const GigCard: React.FC<GigCardProps> = ({ image, status }) => (
+};
+
+const GigCard: React.FC<GigCardProps> = ({ image, status, title, description, price }) => (
   <div className="relative rounded-lg overflow-hidden bg-gray-900">
     <div className="aspect-square">
-      <img src={image} alt="Gig preview" className="w-full h-full object-cover" />
+      <img
+        src={image || '/images/default-gig.png'}
+        alt="Gig preview"
+        className="w-full h-full object-cover"
+      />
     </div>
     <div className="p-4 space-y-2">
       <div className="flex items-center space-x-2">
@@ -105,8 +123,8 @@ const GigCard: React.FC<GigCardProps> = ({ image, status }) => (
           </svg>
         </button>
       </div>
-      <h3 className="text-white font-medium">UX designer</h3>
-      <p className="text-gray-400 text-sm truncate">Brief description of this gig, Brief description of this gig...</p>
+      <h3 className="text-white font-medium">{title}</h3>
+      <p className="text-gray-400 text-sm truncate">{description}</p>
       <div className="flex justify-between items-center pt-2">
         {status === 'completed' ? (
           <span className="px-3 py-1 bg-green-900 text-green-400 rounded-md text-sm">Completed</span>
@@ -117,7 +135,7 @@ const GigCard: React.FC<GigCardProps> = ({ image, status }) => (
         )}
         <div className="flex items-center space-x-1">
           <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
-          <span className="text-white">8 SOL</span>
+          <span className="text-white">{price} SOL</span>
         </div>
       </div>
     </div>
@@ -210,19 +228,55 @@ const Dashboard: React.FC = () => {
     transactions: 'This month'
   });
   const [showAlert, setShowAlert] = useState(false);
+  const [gigs, setGigs] = useState<Gig[]>([]);
+  const [isLoadingGigs, setIsLoadingGigs] = useState(false);
+  const [gigError, setGigError] = useState('');
   const { publicKey, connected } = useWallet();
   const router = useRouter();
+
   // Function to handle time range changes for different metrics
   const handleTimeRangeChange = (metric: keyof typeof timeRanges, range: string) => {
     setTimeRanges(prev => ({
       ...prev,
       [metric]: range
     }));
-    
-    // Here you would typically fetch new data based on the selected time range
-    // For example:
-    // fetchMetricData(metric, range);
   };
+
+  // Fetch gigs for the connected wallet
+  useEffect(() => {
+    const fetchGigs = async () => {
+      if (!connected || !publicKey || activeTab !== 'active') {
+        setGigs([]);
+        setIsLoadingGigs(false);
+        return;
+      }
+
+      setIsLoadingGigs(true);
+      setGigError('');
+      try {
+        const walletAddress = publicKey.toString();
+        const encodedWallet = encodeURIComponent(walletAddress);
+        console.log('Fetching gigs for wallet:', walletAddress);
+        const response = await fetch(`/api/gigs?wallet=${encodedWallet}`);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to fetch gigs');
+        }
+
+        const fetchedGigs = await response.json();
+        console.log('Fetched gigs:', fetchedGigs);
+        setGigs(fetchedGigs);
+      } catch (error) {
+        console.error('Error fetching gigs:', error);
+        setGigError(error instanceof Error ? error.message : 'Failed to load gigs');
+      } finally {
+        setIsLoadingGigs(false);
+      }
+    };
+
+    fetchGigs();
+  }, [connected, publicKey, activeTab]);
 
   const renderStatsCard = (
     label: string, 
@@ -258,9 +312,9 @@ const Dashboard: React.FC = () => {
   ];
 
   const navItems = [
-    { title: 'DASHBOARD', href: '../dashboard' },
-    { title: 'INBOX', href: '../inbox' },
-    { title: 'PROFILE', href: '../profile' },
+    { title: 'DASHBOARD', href: '/dashboard' },
+    { title: 'INBOX', href: '/inbox' },
+    { title: 'PROFILE', href: '/profile' },
     { title: 'MARKETPLACE', href: '/' },
     { title: 'SOLEER HOME', href: 'https://www.soleer.xyz' },
     { title: 'FAQ', href: 'https://www.soleer.xyz/faq' },
@@ -292,9 +346,7 @@ const Dashboard: React.FC = () => {
     );
   }
 
-
   return (
-    
     <div className="min-h-screen bg-[#0A0A0B] text-white">
       <div 
         className="fixed inset-0 pointer-events-none bg-cover bg-center bg-no-repeat opacity-70"
@@ -338,7 +390,6 @@ const Dashboard: React.FC = () => {
               )}
             </div>
 
-
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
               <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
                 <span className="text-gray-400">Total Gigs worked on</span>
@@ -349,7 +400,7 @@ const Dashboard: React.FC = () => {
                   <span className="text-gray-400">Active Gigs</span>
                   <button className="text-purple-500 hover:text-purple-400">View</button>
                 </div>
-                <p className="text-2xl font-medium mt-2">0</p>
+                <p className="text-2xl font-medium mt-2">{gigs.length}</p>
               </div>
               <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
                 <div className="flex justify-between items-center">
@@ -384,7 +435,34 @@ const Dashboard: React.FC = () => {
         )}
 
         {activeTab === 'active' && (
-          <EmptyState message="No active jobs yet. Your ongoing gigs will appear here." />
+          <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold mb-6">Active Jobs</h2>
+            {isLoadingGigs ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-white" />
+                <span className="ml-2 text-white">Loading gigs...</span>
+              </div>
+            ) : gigError ? (
+              <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+                <p className="text-red-500 font-medium">{gigError}</p>
+              </div>
+            ) : gigs.length === 0 ? (
+              <EmptyState message="No active jobs yet. Your ongoing gigs will appear here." />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {gigs.map(gig => (
+                  <GigCard
+                    key={gig.id}
+                    image={gig.image || '/images/default-gig.png'}
+                    status={gig.status === 'COMPLETED' ? 'completed' : 'active'}
+                    title={gig.title}
+                    description={gig.description}
+                    price={gig.amount}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'completed' && (
