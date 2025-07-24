@@ -2,6 +2,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { put } from '@vercel/blob';
 import { nanoid } from 'nanoid';
+// @ts-ignore
 import formidable from 'formidable';
 import fs from 'fs';
 
