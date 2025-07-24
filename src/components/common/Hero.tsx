@@ -514,59 +514,57 @@ const FreelancerProfileModal: React.FC<FreelancerProfileModalProps> = ({ isOpen,
   if (!isOpen || !freelancer) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center">
-      <div className="bg-[#1A1B1E] rounded-lg w-full max-w-md relative">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
+      <div className="bg-[#1A1B1E] rounded-xl w-full max-w-sm relative border border-[#26272B] shadow-2xl">
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-gray-400 hover:text-white"
+          className="absolute right-3 top-3 text-gray-400 hover:text-white transition-colors z-10"
         >
-          <X size={24} />
+          <X size={20} />
         </button>
 
-        <div className="p-6">
-          <h2 className="text-2xl font-bold text-white mb-2">Profile</h2>
-
-          <div className="flex items-center space-x-4 mb-6">
+        <div className="p-5">
+          {/* Header Section */}
+          <div className="text-center mb-4">
             <img
               src={freelancer.avatar}
               alt={freelancer.name}
-              className="w-12 h-12 rounded-full"
+              className="w-16 h-16 rounded-full mx-auto mb-3 border-2 border-[#8B5CF6]"
             />
-            <div>
-              <h3 className="text-white font-bold">{freelancer.name}</h3>
-              <div className="flex text-yellow-400">
-                {'★'.repeat(5)}
-              </div>
+            <h3 className="text-white font-bold text-lg">{freelancer.name}</h3>
+            <div className="flex justify-center text-yellow-400 text-sm mb-2">
+              {'★'.repeat(5)}
             </div>
+            <p className="text-[#8B5CF6] font-semibold text-sm">UI/UX DESIGNER</p>
           </div>
 
-          <div className="flex items-center justify-between mb-6">
-            <button className="bg-[#8B5CF6] text-white px-6 py-2 rounded-lg hover:bg-[#7C3AED]">
-              HIRE
+          {/* Action Section */}
+          <div className="flex items-center justify-between mb-4 p-3 bg-[#26272B] rounded-lg">
+            <button className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white px-4 py-2 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all text-sm font-medium">
+              HIRE NOW
             </button>
-            <div className="flex items-center space-x-4">
-              <span className="text-red-500">Not enough Sol</span>
-              <div className="flex items-center space-x-2">
+            <div className="text-right">
+              <div className="flex items-center space-x-2 mb-1">
                 <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
-                <span className="text-white">8 Sol</span>
+                <span className="text-white font-medium">8 SOL</span>
               </div>
+              <span className="text-red-400 text-xs">Insufficient Balance</span>
             </div>
           </div>
 
-          <h3 className="text-white text-xl font-bold mb-4">UI/UX DESIGNER</h3>
-
-          <p className="text-gray-400 mb-6">
-            Thousands of sponsorship jobs are advertised daily. If you haven't landed one,
-            you're not looking in the right place.
+          {/* Description */}
+          <p className="text-gray-400 text-sm mb-4 leading-relaxed">
+            Experienced UI/UX designer specializing in Web3 interfaces and modern digital experiences.
           </p>
 
-          <div className="mb-6">
-            <h4 className="text-white font-bold mb-3">Skills</h4>
-            <div className="flex flex-wrap gap-2">
-              {freelancer.skills?.map((skill) => (
+          {/* Skills Section */}
+          <div className="mb-4">
+            <h4 className="text-white font-semibold mb-2 text-sm">Skills</h4>
+            <div className="flex flex-wrap gap-1">
+              {(freelancer.skills || ['UI Design', 'UX Research', 'Figma', 'Prototyping']).map((skill) => (
                 <span
                   key={skill}
-                  className="bg-[#26272B] text-white px-4 py-1 rounded-full text-sm"
+                  className="bg-[#26272B] text-white px-2 py-1 rounded-full text-xs border border-[#333]"
                 >
                   {skill}
                 </span>
@@ -574,23 +572,24 @@ const FreelancerProfileModal: React.FC<FreelancerProfileModalProps> = ({ isOpen,
             </div>
           </div>
 
-          <div className="space-y-4">
+          {/* Links Section */}
+          <div className="grid grid-cols-2 gap-4 text-xs">
             <div>
-              <h4 className="text-white font-bold mb-2">Portfolio</h4>
+              <h4 className="text-white font-semibold mb-2">Portfolio</h4>
               <a
                 href="#"
-                className="inline-flex items-center space-x-2 text-gray-400 hover:text-white"
+                className="text-[#8B5CF6] hover:text-[#7C3AED] transition-colors flex items-center space-x-1"
               >
+                <span>🌐</span>
                 <span>Website</span>
               </a>
             </div>
 
             <div>
-              <h4 className="text-white font-bold mb-2">Socials</h4>
-              <div className="flex space-x-3">
-                <a href="#" className="text-gray-400 hover:text-white">X.com</a>
-                <a href="#" className="text-gray-400 hover:text-white">Telegram</a>
-                <a href="#" className="text-gray-400 hover:text-white">Discord</a>
+              <h4 className="text-white font-semibold mb-2">Connect</h4>
+              <div className="space-y-1">
+                <a href="#" className="text-gray-400 hover:text-white transition-colors block">Twitter</a>
+                <a href="#" className="text-gray-400 hover:text-white transition-colors block">Discord</a>
               </div>
             </div>
           </div>
@@ -599,6 +598,7 @@ const FreelancerProfileModal: React.FC<FreelancerProfileModalProps> = ({ isOpen,
     </div>
   );
 };
+
 
 const WalletConnectionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
@@ -639,43 +639,44 @@ const StarIcon: React.FC = () => (
 );
 
 const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick }) => (
-  <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-lg transition-shadow">
-    <div className="relative h-[140px]">
+  <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full max-w-[280px]">
+    <div className="relative h-[160px] overflow-hidden">
       <img
         src={job.image}
         alt={job.title}
-        className="w-full h-full object-cover"
+        className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
       />
-      <button className="absolute top-2 right-2 p-1 bg-[#26272B] rounded">
+      <button className="absolute top-2 right-2 p-1 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
         <img src="/images/bookmark.png" alt="Bookmark" className="w-3 h-3" />
       </button>
     </div>
     <div className="p-3">
       <div
-        className="flex items-center space-x-2 mb-2 cursor-pointer"
+        className="flex items-center space-x-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
         onClick={() => onProfileClick(job.freelancer)}
       >
         <img
           src={job.freelancer.avatar}
           alt={job.freelancer.name}
-          className="w-5 h-5 rounded-full"
+          className="w-4 h-4 rounded-full"
         />
         <span className="text-white text-xs font-medium truncate">{job.freelancer.name}</span>
       </div>
-      <h3 className="text-white font-semibold text-sm mb-2 line-clamp-1">{job.title}</h3>
+      <h3 className="text-white font-semibold text-sm mb-2 line-clamp-1 group-hover:text-[#8B5CF6] transition-colors">{job.title}</h3>
       <p className="text-gray-400 text-xs mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
       <div className="flex justify-between items-center">
-        <button className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#2A2A2A] transition-colors">
+        <button className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200">
           HIRE
         </button>
         <div className="flex items-center space-x-1">
           <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3" />
-          <span className="text-white text-xs font-medium">{job.price} Sol</span>
+          <span className="text-white text-xs font-medium group-hover:text-[#8B5CF6] transition-colors">{job.price} Sol</span>
         </div>
       </div>
     </div>
   </div>
 );
+
 
 const SearchIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

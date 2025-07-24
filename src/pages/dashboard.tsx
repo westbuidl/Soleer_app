@@ -105,37 +105,39 @@ const TimeRangeDropdown: React.FC<TimeRangeDropdownProps> = ({ selectedRange, on
 };
 
 const GigCard: React.FC<GigCardProps> = ({ image, status, title, description, price }) => (
-  <div className="relative rounded-lg overflow-hidden bg-gray-900">
-    <div className="aspect-square">
+  <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full max-w-[280px]">
+    <div className="relative h-[160px] overflow-hidden">
       <img
         src={image || '/images/default-gig.png'}
-        alt="Gig preview"
-        className="w-full h-full object-cover"
+        alt={title}
+        className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
       />
+      <button className="absolute top-2 right-2 p-1 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </button>
     </div>
-    <div className="p-4 space-y-2">
-      <div className="flex items-center space-x-2">
-        <div className="w-6 h-6 rounded-full bg-gray-700"></div>
-        <span className="text-white">Freexxyz</span>
-        <button className="ml-auto">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
-          </svg>
-        </button>
+    <div className="p-3">
+      <div className="flex items-center space-x-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity">
+        <div className="w-4 h-4 rounded-full bg-[#8B5CF6]"></div>
+        <span className="text-white text-xs font-medium truncate">You</span>
       </div>
-      <h3 className="text-white font-medium">{title}</h3>
-      <p className="text-gray-400 text-sm truncate">{description}</p>
-      <div className="flex justify-between items-center pt-2">
+      <h3 className="text-white font-semibold text-sm mb-2 line-clamp-1 group-hover:text-[#8B5CF6] transition-colors">{title}</h3>
+      <p className="text-gray-400 text-xs mb-3 line-clamp-2 leading-relaxed">{description}</p>
+      <div className="flex justify-between items-center">
         {status === 'completed' ? (
-          <span className="px-3 py-1 bg-green-900 text-green-400 rounded-md text-sm">Completed</span>
+          <span className="bg-green-500/20 text-green-400 px-3 py-1 rounded text-xs font-medium border border-green-500/30">
+            Completed
+          </span>
         ) : (
-          <button className="px-4 py-1 bg-gray-800 text-white rounded-md text-sm hover:bg-gray-700">
-            Details
+          <button className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200">
+            MANAGE
           </button>
         )}
         <div className="flex items-center space-x-1">
-          <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
-          <span className="text-white">{price} SOL</span>
+          <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3" />
+          <span className="text-white text-xs font-medium group-hover:text-[#8B5CF6] transition-colors">{price} Sol</span>
         </div>
       </div>
     </div>
@@ -449,18 +451,18 @@ const Dashboard: React.FC = () => {
             ) : gigs.length === 0 ? (
               <EmptyState message="No active jobs yet. Your ongoing gigs will appear here." />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {gigs.map(gig => (
-                  <GigCard
-                    key={gig.id}
-                    image={gig.image || '/images/default-gig.png'}
-                    status={gig.status === 'COMPLETED' ? 'completed' : 'active'}
-                    title={gig.title}
-                    description={gig.description}
-                    price={gig.amount}
-                  />
-                ))}
-              </div>
+<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+  {gigs.map(gig => (
+    <GigCard
+      key={gig.id}
+      image={gig.image || '/images/default-gig.png'}
+      status={gig.status === 'COMPLETED' ? 'completed' : 'active'}
+      title={gig.title}
+      description={gig.description}
+      price={gig.amount}
+    />
+  ))}
+</div>
             )}
           </div>
         )}
