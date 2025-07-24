@@ -1,11 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Footer from "@/components/sections/Footer";
 import Navbar from "@/components/common/Navbar";
-import { ChevronLeft, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Loader2, Edit3, Pause, Play, Trash2, UploadCloud, X } from 'lucide-react';
 import "../app/globals.css";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useRouter } from 'next/router';
+//import React, { useState, useCallback } from 'react';
+//import { X, UploadCloud, Loader2, Edit3, Trash2, Pause, Play } from 'lucide-react';
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
 
 // Interface definitions
 interface Gig {
@@ -23,6 +27,8 @@ interface GigCardProps {
   title: string;
   description: string;
   price: number;
+  gig: Gig;
+  onManage: (gig: Gig) => void;
 }
 
 interface Tab {
@@ -46,6 +52,32 @@ interface TimeRangeDropdownProps {
   onSelect: (range: string) => void;
   className?: string;
 }
+interface EditGigModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  gig: Gig | null;
+  onGigUpdated: (updatedGig: Gig) => void;
+  onGigDeleted: (gigId: number) => void;
+}
+
+interface EditFormData {
+  title: string;
+  description: string;
+  amount: string;
+  category: string;
+  tags: string;
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  image: File | null;
+}
+
+// Toast types
+type ToastType = 'success' | 'error' | 'info';
+
+interface ToastAlert {
+  type: ToastType;
+  message: string;
+}
+
 
 const TimeRangeDropdown: React.FC<TimeRangeDropdownProps> = ({ selectedRange, onSelect, className = '' }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -91,9 +123,8 @@ const TimeRangeDropdown: React.FC<TimeRangeDropdownProps> = ({ selectedRange, on
                 onSelect(range);
                 setIsOpen(false);
               }}
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors ${
-                selectedRange === range ? 'text-purple-500' : 'text-white'
-              }`}
+              className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-700 transition-colors ${selectedRange === range ? 'text-purple-500' : 'text-white'
+                }`}
             >
               {range}
             </button>
@@ -104,7 +135,8 @@ const TimeRangeDropdown: React.FC<TimeRangeDropdownProps> = ({ selectedRange, on
   );
 };
 
-const GigCard: React.FC<GigCardProps> = ({ image, status, title, description, price }) => (
+
+const GigCard: React.FC<GigCardProps> = ({ image, status, title, description, price, gig, onManage }) => (
   <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full max-w-[280px]">
     <div className="relative h-[160px] overflow-hidden">
       <img
@@ -131,7 +163,13 @@ const GigCard: React.FC<GigCardProps> = ({ image, status, title, description, pr
             Completed
           </span>
         ) : (
-          <button className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200">
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              onManage(gig);
+            }}
+            className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200"
+          >
             MANAGE
           </button>
         )}
@@ -187,7 +225,7 @@ const ScrollableTabs: React.FC<ScrollableTabsProps> = ({ tabs, activeTab, setAct
           <ChevronLeft className="w-5 h-5 text-white" />
         </button>
       )}
-      
+
       <div
         ref={tabsRef}
         className="flex space-x-8 overflow-x-auto scrollbar-hide px-4 py-2 -mx-4 scroll-smooth"
@@ -197,11 +235,10 @@ const ScrollableTabs: React.FC<ScrollableTabsProps> = ({ tabs, activeTab, setAct
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`whitespace-nowrap pb-4 relative ${
-              activeTab === tab.id 
-                ? 'text-white border-b-2 border-purple-500' 
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
+            className={`whitespace-nowrap pb-4 relative ${activeTab === tab.id
+              ? 'text-white border-b-2 border-purple-500'
+              : 'text-gray-500 hover:text-gray-300'
+              }`}
           >
             {tab.label}
           </button>
@@ -219,6 +256,464 @@ const ScrollableTabs: React.FC<ScrollableTabsProps> = ({ tabs, activeTab, setAct
     </div>
   );
 };
+
+const EditGigModal: React.FC<EditGigModalProps> = ({
+  isOpen,
+  onClose,
+  gig,
+  onGigUpdated,
+  onGigDeleted
+}) => {
+  const [formData, setFormData] = useState<EditFormData>({
+    title: '',
+    description: '',
+    amount: '',
+    category: '',
+    tags: '',
+    status: 'ACTIVE',
+    image: null
+  });
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [toastAlert, setToastAlert] = useState<ToastAlert | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Initialize form data when gig changes
+  React.useEffect(() => {
+    if (gig && isOpen) {
+      setFormData({
+        title: gig.title || '',
+        description: gig.description || '',
+        amount: gig.amount !== undefined && gig.amount !== null ? gig.amount.toString() : '',
+        category: '', // Add category to Gig interface if needed
+        tags: '', // Add tags to Gig interface if needed
+        status: gig.status || 'ACTIVE',
+        image: null
+      });
+      setPreviewUrl(gig.image || null);
+      setError('');
+      setConfirmDelete(false);
+    }
+  }, [gig, isOpen]);
+
+  const showToast = (type: ToastType, message: string) => {
+    setToastAlert({ type, message });
+    setTimeout(() => setToastAlert(null), 5000);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('error', 'Image size must be less than 10MB');
+        return;
+      }
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        showToast('error', 'Please upload a valid image file');
+        return;
+      }
+      setFormData({ ...formData, image: file });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+
+  const uploadImage = async (file: File): Promise<string> => {
+    const formDataUpload = new FormData();
+    formDataUpload.append('file', file);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formDataUpload,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Image upload failed');
+    }
+
+    const data = await response.json();
+    return data.url;
+  };
+
+  // Mock update function (replace with actual API call)
+  const handleUpdateGig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gig) return;
+
+    setError('');
+    setIsLoading(true);
+
+    try {
+      if (!formData.title || !formData.description || !formData.amount) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      const amount = parseFloat(formData.amount);
+      if (isNaN(amount) || amount <= 0 || amount > 1000) {
+        throw new Error('Please enter a valid amount between 0.01 and 1000 SOL');
+      }
+
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const updatedGig: Gig = {
+        ...gig,
+        title: formData.title,
+        description: formData.description,
+        amount: amount,
+        status: formData.status,
+        image: previewUrl
+      };
+
+      onGigUpdated(updatedGig);
+      showToast('success', 'Gig updated successfully! 🎉');
+
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+      showToast('error', error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Mock delete function (replace with actual API call)
+  const handleDeleteGig = async () => {
+    if (!gig) return;
+
+    setIsLoading(true);
+    try {
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      onGigDeleted(gig.id);
+      showToast('success', 'Gig deleted successfully');
+
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+      showToast('error', error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (newStatus: 'ACTIVE' | 'PAUSED') => {
+    if (!gig) return;
+
+    setIsLoading(true);
+    try {
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const updatedGig: Gig = {
+        ...gig,
+        status: newStatus
+      };
+
+      onGigUpdated(updatedGig);
+      setFormData({ ...formData, status: newStatus });
+      showToast('success', `Gig ${newStatus.toLowerCase()} successfully`);
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message);
+      showToast('error', error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isOpen || !gig) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-[#1A1B1E] rounded-lg w-full max-w-2xl relative max-h-[90vh] overflow-y-auto">
+        {toastAlert && (
+          <div
+            className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${toastAlert.type === 'success'
+                ? 'bg-green-500'
+                : toastAlert.type === 'error'
+                  ? 'bg-red-500'
+                  : 'bg-blue-500'
+              } text-white text-sm font-medium`}
+          >
+            {toastAlert.message}
+          </div>
+        )}
+
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 text-gray-400 hover:text-white z-10"
+          disabled={isLoading}
+        >
+          <X size={24} />
+        </button>
+
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-white flex items-center">
+              <Edit3 className="w-5 h-5 mr-2" />
+              Manage Gig
+            </h2>
+            <div className="flex items-center space-x-2">
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${gig.status === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
+                  gig.status === 'PAUSED' ? 'bg-yellow-500/20 text-yellow-400' :
+                    gig.status === 'COMPLETED' ? 'bg-blue-500/20 text-blue-400' :
+                      'bg-gray-500/20 text-gray-400'
+                }`}>
+                {gig.status}
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex flex-wrap gap-2 mb-6 p-4 bg-[#26272B] rounded-lg">
+            <button
+              onClick={() => handleStatusChange(gig.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE')}
+              disabled={isLoading}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${gig.status === 'ACTIVE'
+                  ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
+                  : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                }`}
+            >
+              {gig.status === 'ACTIVE' ? <Pause size={16} /> : <Play size={16} />}
+              <span>{gig.status === 'ACTIVE' ? 'Pause Gig' : 'Activate Gig'}</span>
+            </button>
+
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={isLoading}
+              className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+            >
+              <Trash2 size={16} />
+              <span>Delete Gig</span>
+            </button>
+          </div>
+
+          {error && (
+            <Alert className="mb-4 bg-red-500/10 border-red-500/20">
+              <AlertDescription className="text-red-400">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {confirmDelete && (
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <h3 className="text-red-400 font-medium mb-2">Confirm Deletion</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                Are you sure you want to delete this gig? This action cannot be undone.
+              </p>
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleDeleteGig}
+                  disabled={isLoading}
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                >
+                  {isLoading ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleUpdateGig} className="space-y-6">
+            {/* Image Upload */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Gig Image
+              </label>
+              <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 hover:border-gray-500 transition-colors">
+                {previewUrl ? (
+                  <div className="relative">
+                    <img src={previewUrl} alt="Preview" className="w-full h-48 object-cover rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewUrl(gig.image);
+                        setFormData({ ...formData, image: null });
+                      }}
+                      className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 p-1 rounded-full transition-colors"
+                      disabled={isLoading}
+                    >
+                      <X size={16} className="text-white" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center h-48 cursor-pointer hover:bg-gray-800/20 rounded-lg transition-colors">
+                    <UploadCloud className="w-12 h-12 text-gray-400 mb-2" />
+                    <span className="text-gray-400 text-sm text-center">
+                      Click to upload new image
+                      <br />
+                      <span className="text-xs">Max 10MB • JPEG, PNG, GIF, WebP</span>
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      onChange={handleImageChange}
+                      className="hidden"
+                      disabled={isLoading}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            {/* Title */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Title <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                placeholder="Enter gig title"
+                disabled={isLoading}
+                required
+                maxLength={100}
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Description <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 h-32 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent resize-none"
+                placeholder="Describe your gig"
+                disabled={isLoading}
+                required
+                maxLength={500}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Category */}
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                  placeholder="e.g., Web Development"
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">
+                  Amount (SOL) <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="w-full bg-[#26272B] text-white rounded-lg p-3 pr-16 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0.01"
+                    max="1000"
+                    disabled={isLoading}
+                    required
+                  />
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
+                    <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+                    <span className="text-gray-400 text-sm">SOL</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Tags <span className="text-gray-400">(comma-separated)</span>
+              </label>
+              <input
+                type="text"
+                value={formData.tags}
+                onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                placeholder="e.g., react, typescript, web3"
+                disabled={isLoading}
+              />
+            </div>
+
+            {/* Status */}
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Status
+              </label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                disabled={isLoading}
+              >
+                <option value="DRAFT">Draft</option>
+                <option value="ACTIVE">Active</option>
+                <option value="PAUSED">Paused</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
+                disabled={isLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading || !formData.title || !formData.description || !formData.amount}
+                className="px-6 py-2 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update Gig'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('stats');
@@ -281,8 +776,8 @@ const Dashboard: React.FC = () => {
   }, [connected, publicKey, activeTab]);
 
   const renderStatsCard = (
-    label: string, 
-    value: string | number, 
+    label: string,
+    value: string | number,
     icon?: React.ReactNode,
     timeRangeKey?: keyof typeof timeRanges
   ) => (
@@ -302,7 +797,30 @@ const Dashboard: React.FC = () => {
       </div>
     </div>
   );
-  
+
+
+  const [selectedGigForEdit, setSelectedGigForEdit] = useState<Gig | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Add these callback functions to your Dashboard component:
+  const handleManageClick = useCallback((gig: Gig) => {
+    setSelectedGigForEdit(gig);
+    setIsEditModalOpen(true);
+  }, []);
+
+  const handleGigUpdated = useCallback((updatedGig: Gig) => {
+    setGigs(prevGigs =>
+      prevGigs.map(gig => gig.id === updatedGig.id ? updatedGig : gig)
+    );
+  }, []);
+
+  const handleGigDeleted = useCallback((gigId: number) => {
+    setGigs(prevGigs => prevGigs.filter(gig => gig.id !== gigId));
+  }, []);
+
+
+
+
   const tabs: Tab[] = [
     { id: 'stats', label: 'Job earnings & stats' },
     { id: 'saved', label: 'Saved' },
@@ -350,21 +868,21 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0A0A0B] text-white">
-      <div 
+      <div
         className="fixed inset-0 pointer-events-none bg-cover bg-center bg-no-repeat opacity-70"
         style={{
           backgroundImage: 'url("/images/Ellipse-why.png")',
           backgroundBlendMode: 'overlay'
         }}
       />
-      
+
       <div className="relative z-50">
         <Navbar navItems={navItems} title={''} description={''} />
       </div>
-      
+
       <main className="px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-7xl mx-auto relative">
         <h1 className="text-3xl sm:text-4xl font-bold mb-8">Dashboard</h1>
-        
+
         <div className="border-b border-gray-800 mb-8">
           <ScrollableTabs tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
@@ -451,24 +969,46 @@ const Dashboard: React.FC = () => {
             ) : gigs.length === 0 ? (
               <EmptyState message="No active jobs yet. Your ongoing gigs will appear here." />
             ) : (
-<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-  {gigs.map(gig => (
-    <GigCard
-      key={gig.id}
-      image={gig.image || '/images/default-gig.png'}
-      status={gig.status === 'COMPLETED' ? 'completed' : 'active'}
-      title={gig.title}
-      description={gig.description}
-      price={gig.amount}
-    />
-  ))}
-</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                {gigs.map(gig => (
+                  <GigCard
+                    key={gig.id}
+                    image={gig.image || '/images/default-gig.png'}
+                    status={gig.status === 'COMPLETED' ? 'completed' : 'active'}
+                    title={gig.title}
+                    description={gig.description}
+                    price={gig.amount}
+                    gig={gig}
+                    onManage={handleManageClick}
+                  />
+                ))}
+              </div>
             )}
           </div>
         )}
 
         {activeTab === 'completed' && (
-          <EmptyState message="No completed jobs yet. Your finished gigs will appear here." />
+          <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold mb-6">Completed Jobs</h2>
+            {gigs.filter(g => g.status === 'COMPLETED').length === 0 ? (
+              <EmptyState message="No completed jobs yet. Your finished gigs will appear here." />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                {gigs.filter(g => g.status === 'COMPLETED').map(gig => (
+                  <GigCard
+                    key={gig.id}
+                    image={gig.image || '/images/default-gig.png'}
+                    status="completed"
+                    title={gig.title}
+                    description={gig.description}
+                    price={gig.amount}
+                    gig={gig}
+                    onManage={handleManageClick}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'reviews' && (
@@ -479,7 +1019,15 @@ const Dashboard: React.FC = () => {
           <EmptyState message="No analytics data available yet. Your performance metrics will appear here." />
         )}
       </main>
-      
+      <EditGigModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        gig={selectedGigForEdit}
+        onGigUpdated={handleGigUpdated}
+        onGigDeleted={handleGigDeleted}
+      />
+
+
       <Footer />
     </div>
   );
