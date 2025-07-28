@@ -66,6 +66,11 @@ model Gig {
   status     GigStatus @default(ACTIVE)
   isArchived Boolean   @default(false)
 
+  // New fields for tracking popularity
+  views      Int       @default(0)
+  lastViewed DateTime?
+
+
   // Relations
   userId  String
   user    User       @relation(fields: [userId], references: [id])
@@ -79,7 +84,10 @@ model Gig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId])
+@@index([userId])
+  @@index([views]) // Add index for views
+  @@index([createdAt]) // Add index for created date
+
 }
 
 model SavedGig {
