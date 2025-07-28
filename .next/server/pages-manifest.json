@@ -2,9 +2,5 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/dashboard": "pages/dashboard.js",
-  "/profile": "pages/profile.js",
-  "/api/users": "pages/api/users.js",
-  "/api/gigs": "pages/api/gigs.js",
-  "/api/upload": "pages/api/upload.js"
+  "/api/gigs": "pages/api/gigs.js"
 }

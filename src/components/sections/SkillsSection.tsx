@@ -106,7 +106,7 @@ const SkillsSection: React.FC = () => {
     try {
       setIsLoading(true);
       const encodedSkill = encodeURIComponent(skill);
-      router.push(`/app.soleer.xyz?skill=${encodedSkill}`);
+      router.push(`https://app.soleer.xyz?skill=${encodedSkill}`);
     } catch (error) {
       console.error('Error querying marketplace:', error);
     } finally {
