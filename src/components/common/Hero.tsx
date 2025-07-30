@@ -161,7 +161,7 @@ const SocialShareButtons: React.FC<{
       console.error('Failed to copy link:', err);
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
-      textArea.value = urlToCopy;
+      //textArea.value = urlToCopy;
       document.body.appendChild(textArea);
       textArea.select();
       document.execCommand('copy');

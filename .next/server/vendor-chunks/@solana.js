@@ -577,16 +577,6 @@ eval("\n// base-x encoding / decoding\n// Copyright (c) 2018 base-x contributors
 
 eval("var basex = __webpack_require__(/*! base-x */ \"(ssr)/./node_modules/@solana/web3.js/node_modules/base-x/src/index.js\")\nvar ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'\n\nmodule.exports = basex(ALPHABET)\n//# sourceURL=[module]\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiKHNzcikvLi9ub2RlX21vZHVsZXMvQHNvbGFuYS93ZWIzLmpzL25vZGVfbW9kdWxlcy9iczU4L2luZGV4LmpzIiwibWFwcGluZ3MiOiJBQUFBLFlBQVksbUJBQU8sQ0FBQyxxRkFBUTtBQUM1Qjs7QUFFQSIsInNvdXJjZXMiOlsiL1VzZXJzL29rZWtlaHlhY2ludGhhZmFtL1NvbGFuYS9Tb2xlZXJfYXBwL25vZGVfbW9kdWxlcy9Ac29sYW5hL3dlYjMuanMvbm9kZV9tb2R1bGVzL2JzNTgvaW5kZXguanMiXSwic291cmNlc0NvbnRlbnQiOlsidmFyIGJhc2V4ID0gcmVxdWlyZSgnYmFzZS14JylcbnZhciBBTFBIQUJFVCA9ICcxMjM0NTY3ODlBQkNERUZHSEpLTE1OUFFSU1RVVldYWVphYmNkZWZnaGlqa21ub3BxcnN0dXZ3eHl6J1xuXG5tb2R1bGUuZXhwb3J0cyA9IGJhc2V4KEFMUEhBQkVUKVxuIl0sIm5hbWVzIjpbXSwiaWdub3JlTGlzdCI6WzBdLCJzb3VyY2VSb290IjoiIn0=\n//# sourceURL=webpack-internal:///(ssr)/./node_modules/@solana/web3.js/node_modules/bs58/index.js\n");
 
-/***/ }),
-
-/***/ "./node_modules/@solana/wallet-adapter-react-ui/styles.css":
-/*!*****************************************************************!*\
-  !*** ./node_modules/@solana/wallet-adapter-react-ui/styles.css ***!
-  \*****************************************************************/
-/***/ (() => {
-
-
-
 /***/ })
 
 };
