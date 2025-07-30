@@ -136,38 +136,135 @@ const shareToTikTok = (title: string, description: string, url: string) => {
 };
 
 // Social Share Component
+// Fixed Social Share Component with proper URL handling
+// Fixed Social Share Component with proper URL handling
 const SocialShareButtons: React.FC<{ 
   gig: Job; 
   showCopyLink?: boolean;
-  showForAllUsers?: boolean; // New prop to control visibility
+  showForAllUsers?: boolean;
 }> = ({ gig, showCopyLink = true, showForAllUsers = false }) => {
   const [copied, setCopied] = useState(false);
   const [gigUrl, setGigUrl] = useState('');
 
-  // Set gig URL safely
+  // Set gig URL safely with proper fallback
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setGigUrl(`${window.location.origin}/gig/${gig.id}`);
+      const baseUrl = window.location.origin;
+      // Use the dedicated gig page route
+      const gigPath = `/gig/${gig.id}`;
+      setGigUrl(`${baseUrl}${gigPath}`);
     }
   }, [gig.id]);
 
   const copyGigLink = async () => {
     try {
-      const urlToCopy = gigUrl || `https://yoursite.com/gig/${gig.id}`; // Fallback URL
-      await navigator.clipboard.writeText(urlToCopy);
+      // Ensure we have a URL to copy
+      const urlToCopy = gigUrl || `${window.location.origin}/marketplace/gig/${gig.id}`;
+      
+      if (navigator.clipboard && window.isSecureContext) {
+        // Use modern clipboard API if available
+        await navigator.clipboard.writeText(urlToCopy);
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textArea = document.createElement('textarea');
+        textArea.value = urlToCopy;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (!successful) {
+          throw new Error('Copy command failed');
+        }
+      }
+      
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      
+      // Optional: Show toast notification
+      console.log('Gig link copied successfully:', urlToCopy);
+      
     } catch (err) {
       console.error('Failed to copy link:', err);
-      // Fallback for older browsers
-      const textArea = document.createElement('textarea');
-      //textArea.value = urlToCopy;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      
+      // Show user-friendly error message
+      alert(`Failed to copy link automatically. Please copy this URL manually:\n\n${gigUrl || `${window.location.origin}/marketplace/gig/${gig.id}`}`);
+    }
+  };
+
+  // Updated share functions with better URL handling
+  const shareToTwitter = (title: string, description: string, url: string) => {
+    try {
+      const text = `Check out this gig: ${title}`;
+      const hashtags = 'solana,web3,freelance,marketplace';
+      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=${hashtags}`;
+      window.open(twitterUrl, '_blank', 'width=600,height=400,scrollbars=yes,resizable=yes');
+    } catch (error) {
+      console.error('Error sharing to Twitter:', error);
+      copyGigLink(); // Fallback to copying link
+    }
+  };
+
+  const shareToInstagram = (title: string, description: string) => {
+    try {
+      const text = `🚀 Check out this amazing gig: ${title}\n\n${description.substring(0, 150)}${description.length > 150 ? '...' : ''}\n\n💼 Available on our Solana marketplace!\n\n#solana #web3 #freelance #marketplace`;
+      
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text);
+      } else {
+        // Fallback method
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      
+      alert('Content copied to clipboard! You can now paste it in your Instagram post or story.');
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      alert('Unable to copy to clipboard. Please copy the gig details manually.');
+    }
+  };
+
+  const shareToTikTok = (title: string, description: string, url: string) => {
+    try {
+      const text = `🔥 Amazing gig alert: ${title}!\n\n💰 Available on Solana marketplace\n🔗 ${url}\n\n#solana #web3 #freelance #gig`;
+      
+      // For mobile devices, try to open TikTok
+      if (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        // Copy to clipboard first
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text);
+        }
+        
+        // Try to open TikTok app
+        const tiktokUrl = `https://www.tiktok.com/upload`;
+        window.open(tiktokUrl, '_blank');
+        alert('Content copied to clipboard! Paste it when creating your TikTok video.');
+      } else {
+        // Desktop - just copy to clipboard
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text);
+        } else {
+          const textArea = document.createElement('textarea');
+          textArea.value = text;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+        }
+        alert('Content copied to clipboard! You can now paste it when creating your TikTok video.');
+      }
+    } catch (error) {
+      console.error('Error sharing to TikTok:', error);
+      copyGigLink(); // Fallback to copying link
     }
   };
 
