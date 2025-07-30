@@ -4,7 +4,7 @@ import Footer from "@/components/sections/Footer";
 import Navbar from './Navbar';
 import "@/app/globals.css";
 import ComingSoonModal from '../../pages/ComingSoonModal';
-import { Plus, UploadCloud, X, Loader2, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight, Grid3x3, List } from 'lucide-react';
+import { Plus, UploadCloud, X, Loader2, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight, Grid3x3, List, Share2, Copy, Check, ExternalLink } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from 'next/navigation';
 
@@ -25,6 +25,9 @@ import {
 } from '@solana/wallet-adapter-wallets';
 
 require('@solana/wallet-adapter-react-ui/styles.css');
+
+// Version number for the marketplace
+const MARKETPLACE_VERSION = "v2.1.0";
 
 // Define Toast types
 type ToastType = 'success' | 'error' | 'info';
@@ -50,6 +53,7 @@ interface Job {
   category?: string;
   tags?: string[];
   createdAt?: string;
+  userId?: string; // Added to identify gig owner
 }
 
 interface FreelancerProfileModalProps {
@@ -61,12 +65,21 @@ interface FreelancerProfileModalProps {
 interface JobCardProps {
   job: Job;
   onProfileClick: (freelancer: Freelancer) => void;
+  onGigClick: (job: Job) => void; // Added for gig detail view
   viewMode: 'grid' | 'list';
+  currentUserId?: string; // Added to identify current user
 }
 
 interface PostGigModalProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+interface GigDetailModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  gig: Job | null;
+  currentUserId?: string;
 }
 
 // Search and Filter interfaces
@@ -77,6 +90,272 @@ interface SearchFilters {
   maxPrice: string;
   sortBy: 'newest' | 'oldest' | 'price-low' | 'price-high' | 'title';
 }
+
+// Social media sharing utilities
+// Fixed Social media sharing utilities with better error handling
+const shareToTwitter = (title: string, description: string, url: string) => {
+  try {
+    const text = `Check out this gig: ${title} - ${description.substring(0, 100)}...`;
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+    window.open(twitterUrl, '_blank', 'width=600,height=400');
+  } catch (error) {
+    console.error('Error sharing to Twitter:', error);
+    // Fallback: copy to clipboard
+    navigator.clipboard.writeText(`${title} - ${description} - ${url}`);
+    alert('Link copied to clipboard! You can now paste it on Twitter.');
+  }
+};
+
+const shareToInstagram = (title: string, description: string) => {
+  try {
+    const text = `Check out this gig: ${title}\n\n${description}\n\nVisit our marketplace to learn more!`;
+    navigator.clipboard.writeText(text);
+    alert('Content copied to clipboard! You can now paste it in your Instagram post or story.');
+  } catch (error) {
+    console.error('Error copying to clipboard:', error);
+    alert('Unable to copy to clipboard. Please copy the gig details manually.');
+  }
+};
+
+const shareToTikTok = (title: string, description: string, url: string) => {
+  try {
+    const text = `Check out this amazing gig: ${title}! ${url}`;
+    // For mobile, try to open TikTok app, otherwise copy to clipboard
+    if (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+      const tiktokUrl = `https://www.tiktok.com/upload?text=${encodeURIComponent(text)}`;
+      window.open(tiktokUrl, '_blank');
+    } else {
+      navigator.clipboard.writeText(text);
+      alert('Content copied to clipboard! You can now paste it when creating your TikTok video.');
+    }
+  } catch (error) {
+    console.error('Error sharing to TikTok:', error);
+    navigator.clipboard.writeText(`${title} - ${description} - ${url}`);
+    alert('Link copied to clipboard!');
+  }
+};
+
+// Social Share Component
+const SocialShareButtons: React.FC<{ 
+  gig: Job; 
+  showCopyLink?: boolean;
+  showForAllUsers?: boolean; // New prop to control visibility
+}> = ({ gig, showCopyLink = true, showForAllUsers = false }) => {
+  const [copied, setCopied] = useState(false);
+  const [gigUrl, setGigUrl] = useState('');
+
+  // Set gig URL safely
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setGigUrl(`${window.location.origin}/gig/${gig.id}`);
+    }
+  }, [gig.id]);
+
+  const copyGigLink = async () => {
+    try {
+      const urlToCopy = gigUrl || `https://yoursite.com/gig/${gig.id}`; // Fallback URL
+      await navigator.clipboard.writeText(urlToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = urlToCopy;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        onClick={() => shareToTwitter(gig.title, gig.description, gigUrl)}
+        className="flex items-center space-x-2 bg-[#1DA1F2] hover:bg-[#1a8cd8] text-white px-3 py-2 rounded-lg transition-colors text-sm"
+        type="button"
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
+        </svg>
+        <span>Twitter</span>
+      </button>
+
+      <button
+        onClick={() => shareToInstagram(gig.title, gig.description)}
+        className="flex items-center space-x-2 bg-gradient-to-r from-[#E4405F] to-[#F56040] hover:from-[#d63384] hover:to-[#e85d37] text-white px-3 py-2 rounded-lg transition-colors text-sm"
+        type="button"
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+        </svg>
+        <span>Instagram</span>
+      </button>
+
+      <button
+        onClick={() => shareToTikTok(gig.title, gig.description, gigUrl)}
+        className="flex items-center space-x-2 bg-black hover:bg-gray-800 text-white px-3 py-2 rounded-lg transition-colors text-sm"
+        type="button"
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
+        </svg>
+        <span>TikTok</span>
+      </button>
+
+      {showCopyLink && (
+        <button
+          onClick={copyGigLink}
+          className="flex items-center space-x-2 bg-[#26272B] hover:bg-[#333] text-white px-3 py-2 rounded-lg transition-colors text-sm border border-gray-600"
+          type="button"
+        >
+          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+          <span>{copied ? 'Copied!' : 'Copy Link'}</span>
+        </button>
+      )}
+    </div>
+  );
+};
+
+// Updated GigDetailModal with always-visible sharing buttons
+const GigDetailModal: React.FC<GigDetailModalProps> = ({ isOpen, onClose, gig, currentUserId }) => {
+  if (!isOpen || !gig) return null;
+
+  const isOwner = currentUserId && gig.userId === currentUserId;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[70] flex items-center justify-center p-4">
+      <div className="bg-[#1A1B1E] rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-[#26272B] shadow-2xl">
+        <div className="sticky top-0 bg-[#1A1B1E] border-b border-[#26272B] p-4 flex justify-between items-center">
+          <h2 className="text-xl font-bold text-white">Gig Details</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Left Column - Image and Basic Info */}
+            <div>
+              <div className="relative h-64 lg:h-80 overflow-hidden rounded-lg mb-6">
+                <img
+                  src={gig.image}
+                  alt={gig.title}
+                  className="w-full h-full object-contain bg-[#0F1014]"
+                />
+              </div>
+
+              {/* Freelancer Info */}
+              <div className="bg-[#26272B] rounded-lg p-4 mb-6">
+                <div className="flex items-center space-x-3 mb-4">
+                  <img
+                    src={gig.freelancer.avatar}
+                    alt={gig.freelancer.name}
+                    className="w-12 h-12 rounded-full border-2 border-[#8B5CF6]"
+                  />
+                  <div>
+                    <h3 className="text-white font-semibold">{gig.freelancer.name}</h3>
+                    <div className="flex text-yellow-400 text-sm">
+                      {'★'.repeat(5)}
+                    </div>
+                  </div>
+                </div>
+                <button className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium">
+                  HIRE NOW
+                </button>
+              </div>
+
+              {/* Social Sharing - Now shows for everyone */}
+              <div className="bg-[#26272B] rounded-lg p-4">
+                <h4 className="text-white font-semibold mb-3">
+                  {isOwner ? 'Share Your Gig' : 'Share This Gig'}
+                </h4>
+                <SocialShareButtons gig={gig} showCopyLink={true} showForAllUsers={true} />
+              </div>
+            </div>
+
+            {/* Right Column - Detailed Info */}
+            <div>
+              <div className="flex justify-between items-start mb-4">
+                <h1 className="text-2xl lg:text-3xl font-bold text-white">{gig.title}</h1>
+                <div className="flex items-center space-x-2">
+                  <img src="/images/sol-logo.png" alt="SOL" className="w-6 h-6" />
+                  <span className="text-2xl font-bold text-white">{gig.price} SOL</span>
+                </div>
+              </div>
+
+              {/* Category */}
+              {gig.category && (
+                <div className="mb-4">
+                  <span className="bg-[#8B5CF6] text-white px-3 py-1 rounded-full text-sm">
+                    {gig.category}
+                  </span>
+                </div>
+              )}
+
+              {/* Description */}
+              <div className="mb-6">
+                <h3 className="text-white font-semibold mb-3">Description</h3>
+                <p className="text-gray-300 leading-relaxed">{gig.description}</p>
+              </div>
+
+              {/* Tags */}
+              {gig.tags && gig.tags.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-white font-semibold mb-3">Skills & Tags</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {gig.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="bg-[#26272B] text-[#8B5CF6] px-3 py-1 rounded-full text-sm border border-[#333]"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Created Date */}
+              {gig.createdAt && (
+                <div className="mb-6">
+                  <h3 className="text-white font-semibold mb-2">Posted</h3>
+                  <p className="text-gray-400">
+                    {new Date(gig.createdAt).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button className="flex-1 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 px-6 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium">
+                  HIRE NOW
+                </button>
+                <button className="bg-[#26272B] text-white py-3 px-6 rounded-lg hover:bg-[#333] transition-colors border border-gray-600">
+                  Contact Freelancer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+// Gig Detail Modal Component
+
+
+
 
 const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
   const [formData, setFormData] = useState({
@@ -305,6 +584,8 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
         
         throw new Error(errorData.error || 'Failed to create gig');
       }
+
+      const createdGig = await response.json();
 
       showToast('success', 'Gig Posted Successfully! 🎉');
       setFormData({
@@ -887,13 +1168,16 @@ const StarIcon: React.FC = () => (
   </svg>
 );
 
-// Enhanced JobCard with better mobile responsiveness
-const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, viewMode }) => {
+// Enhanced JobCard with better mobile responsiveness and gig click functionality
+const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, onGigClick, viewMode, currentUserId }) => {
   if (viewMode === 'list') {
     return (
       <div className="bg-[#1A1B1E] rounded-lg border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 transition-all duration-300 cursor-pointer group p-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative w-full sm:w-32 h-32 sm:h-24 flex-shrink-0 overflow-hidden rounded-lg">
+          <div 
+            className="relative w-full sm:w-32 h-32 sm:h-24 flex-shrink-0 overflow-hidden rounded-lg cursor-pointer"
+            onClick={() => onGigClick(job)}
+          >
             <img
               src={job.image}
               alt={job.title}
@@ -918,7 +1202,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, viewMode }) => {
                   />
                   <span className="text-white text-sm font-medium truncate">{job.freelancer.name}</span>
                 </div>
-                <h3 className="text-white font-semibold text-lg mb-2 group-hover:text-[#8B5CF6] transition-colors line-clamp-1">{job.title}</h3>
+                <h3 
+                  className="text-white font-semibold text-lg mb-2 group-hover:text-[#8B5CF6] transition-colors line-clamp-1 cursor-pointer"
+                  onClick={() => onGigClick(job)}
+                >
+                  {job.title}
+                </h3>
                 <p className="text-gray-400 text-sm mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
                 
                 {job.tags && job.tags.length > 0 && (
@@ -954,7 +1243,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, viewMode }) => {
   // Grid view (enhanced mobile responsiveness)
   return (
     <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full">
-      <div className="relative h-40 sm:h-48 overflow-hidden">
+      <div 
+        className="relative h-40 sm:h-48 overflow-hidden cursor-pointer"
+        onClick={() => onGigClick(job)}
+      >
         <img
           src={job.image}
           alt={job.title}
@@ -976,7 +1268,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, viewMode }) => {
           />
           <span className="text-white text-xs sm:text-sm font-medium truncate">{job.freelancer.name}</span>
         </div>
-        <h3 className="text-white font-semibold text-sm sm:text-base mb-2 line-clamp-2 group-hover:text-[#8B5CF6] transition-colors leading-tight">{job.title}</h3>
+        <h3 
+          className="text-white font-semibold text-sm sm:text-base mb-2 line-clamp-2 group-hover:text-[#8B5CF6] transition-colors leading-tight cursor-pointer"
+          onClick={() => onGigClick(job)}
+        >
+          {job.title}
+        </h3>
         <p className="text-gray-400 text-xs sm:text-sm mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
         
         {job.tags && job.tags.length > 0 && (
@@ -1039,7 +1336,9 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isPostGigModalOpen, setIsPostGigModalOpen] = useState(false);
   const [isFreelancerModalOpen, setIsFreelancerModalOpen] = useState(false);
+  const [isGigDetailModalOpen, setIsGigDetailModalOpen] = useState(false);
   const [selectedFreelancer, setSelectedFreelancer] = useState<Freelancer | null>(null);
+  const [selectedGig, setSelectedGig] = useState<Job | null>(null);
   const [allGigs, setAllGigs] = useState<Job[]>([]);
   const [filteredGigs, setFilteredGigs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1047,6 +1346,7 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(12);
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const [filters, setFilters] = useState<SearchFilters>({
     query: '',
     category: '',
@@ -1065,6 +1365,37 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
     { title: 'SOLEER HOME', href: 'https://www.soleer.xyz' },
     { title: 'FAQ', href: 'https://www.soleer.xyz/faq' },
   ];
+
+  // Get current user ID when wallet is connected
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      if (!connected || !publicKey) {
+        setCurrentUserId(undefined);
+        return;
+      }
+
+      try {
+        const walletAddress = publicKey.toString();
+        const response = await fetch(`/api/users?wallet=${encodeURIComponent(walletAddress)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          if (userData && userData.id) {
+            setCurrentUserId(userData.id);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching current user:', error);
+      }
+    };
+
+    getCurrentUser();
+  }, [connected, publicKey]);
 
   const handleOpenPostGigModal = async () => {
     if (!connected) {
@@ -1092,6 +1423,11 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
   const handleProfileClick = useCallback((freelancer: Freelancer) => {
     setSelectedFreelancer(freelancer);
     setIsFreelancerModalOpen(true);
+  }, []);
+
+  const handleGigClick = useCallback((gig: Job) => {
+    setSelectedGig(gig);
+    setIsGigDetailModalOpen(true);
   }, []);
 
   // Fetch all gigs
@@ -1129,7 +1465,7 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
     fetchGigs();
   }, []);
 
-  // Filter and sort gigs
+  // Filter and sort gigs - Modified to default to newest first (descending order)
   useEffect(() => {
     let filtered = [...allGigs];
 
@@ -1161,7 +1497,7 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
       filtered = filtered.filter(gig => gig.price <= maxPrice);
     }
 
-    // Apply sorting
+    // Apply sorting - Default to newest first (descending order by creation date)
     filtered.sort((a, b) => {
       switch (filters.sortBy) {
         case 'newest':
@@ -1175,7 +1511,8 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
         case 'title':
           return a.title.localeCompare(b.title);
         default:
-          return 0;
+          // Default to newest first
+          return new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime();
       }
     });
 
@@ -1202,7 +1539,12 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
       </div>
       <main className="px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-7xl mx-auto relative">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold">Marketplace</h1>
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-bold">Marketplace</h1>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-sm text-gray-400">Build {MARKETPLACE_VERSION}</span>
+            </div>
+          </div>
           <button
             onClick={handleOpenPostGigModal}
             className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-2 px-4 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 flex items-center space-x-2"
@@ -1263,7 +1605,9 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
                   key={gig.id}
                   job={gig}
                   onProfileClick={handleProfileClick}
+                  onGigClick={handleGigClick}
                   viewMode={viewMode}
+                  currentUserId={currentUserId}
                 />
               ))}
             </div>
@@ -1289,6 +1633,12 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
         isOpen={isFreelancerModalOpen}
         onClose={() => setIsFreelancerModalOpen(false)}
         freelancer={selectedFreelancer}
+      />
+      <GigDetailModal
+        isOpen={isGigDetailModalOpen}
+        onClose={() => setIsGigDetailModalOpen(false)}
+        gig={selectedGig}
+        currentUserId={currentUserId}
       />
     </div>
   );
