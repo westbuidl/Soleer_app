@@ -9,33 +9,32 @@ datasource db {
 }
 
 model User {
-  id               String  @id @default(cuid())
-  walletAddress    String  @unique
-  email            String? @unique
-  emailVerified    Boolean @default(false)
+  id               String                    @id @default(cuid())
+  walletAddress    String                    @unique
+  email            String?                   @unique
+  emailVerified    Boolean                   @default(false)
   verificationCode String?
-  username         String? @unique
+  username         String?                   @unique
   name             String?
-  bio              String? @db.Text
+  bio              String?                   @db.Text
   profileImage     String?
   bannerImage      String?
-  isEmailVerified  Boolean @default(false)
+  isEmailVerified  Boolean                   @default(false)
   verifiedEmail    String?
-
-  // Social links
-  website  String?
-  twitter  String?
-  linkedin String?
-  discord  String?
-
-  // Relations
-  jobProfile JobProfile?
-  gigs       Gig[] // User can have multiple gigs
-  savedGigs  SavedGig[] // User can save multiple gigs
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  website          String?
+  twitter          String?
+  linkedin         String?
+  discord          String?
+  jobProfile       JobProfile?
+  gigs             Gig[] // User can have multiple gigs
+  savedGigs        SavedGig[] // User can save multiple gigs
+  sentMessages     Message[]                 @relation("MessageSender")
+  receivedMessages Message[]                 @relation("MessageReceiver")
+  conversations    ConversationParticipant[]
+  hiresAsClient    Hire[]                    @relation("ClientHires")
+  hiresAsFreelancer Hire[]                   @relation("FreelancerHires")
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
 }
 
 model JobProfile {
@@ -46,48 +45,57 @@ model JobProfile {
   skills      String[]
   description String   @db.Text
   bannerImage String?
-
-  // Professional links
-  portfolio String?
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  portfolio   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Gig {
-  id          String  @id @default(cuid())
+  id          String     @id @default(cuid())
   title       String
-  description String  @db.Text
+  description String     @db.Text
   image       String? // URL to the gig image
   amount      Float // Price in SOL
+  status      GigStatus  @default(ACTIVE)
+  isArchived  Boolean    @default(false)
+  views       Int        @default(0)
+  lastViewed  DateTime?
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+  savedBy     SavedGig[]
+  category    String?
+  tags        String[]
+  hires       Hire[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  // Status and visibility
-  status     GigStatus @default(ACTIVE)
-  isArchived Boolean   @default(false)
+  @@index([userId])
+  @@index([views])
+  @@index([createdAt])
+}
 
-  // New fields for tracking popularity
-  views      Int       @default(0)
-  lastViewed DateTime?
+model Hire {
+  id            String     @id @default(cuid())
+  gigId         String
+  clientId      String
+  freelancerId  String
+  amount        Float
+  status        HireStatus @default(PENDING)
+  transactionId String?    // Solana transaction signature
+  message       String?    @db.Text // Client's message to freelancer
+  deadline      DateTime?  // Optional project deadline
+  requirements  String?    @db.Text // Additional requirements from client
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  gig           Gig        @relation(fields: [gigId], references: [id], onDelete: Cascade)
+  client        User       @relation("ClientHires", fields: [clientId], references: [id], onDelete: Cascade)
+  freelancer    User       @relation("FreelancerHires", fields: [freelancerId], references: [id], onDelete: Cascade)
 
-
-  // Relations
-  userId  String
-  user    User       @relation(fields: [userId], references: [id])
-  savedBy SavedGig[]
-
-  // Categories and tags
-  category String?
-  tags     String[]
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-@@index([userId])
-  @@index([views]) // Add index for views
-  @@index([createdAt]) // Add index for created date
-
+  @@index([gigId])
+  @@index([clientId])
+  @@index([freelancerId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model SavedGig {
@@ -103,9 +111,65 @@ model SavedGig {
   @@index([gigId])
 }
 
+model Conversation {
+  id            String                    @id @default(cuid())
+  participants  ConversationParticipant[]
+  messages      Message[]
+  lastMessageId String?                   @unique
+  lastMessage   Message?                  @relation("ConversationLastMessage", fields: [lastMessageId], references: [id], onDelete: SetNull)
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([updatedAt])
+  @@index([lastMessageId])
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime?
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@index([conversationId])
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  content        String        @db.Text
+  senderId       String
+  receiverId     String
+  conversationId String
+  sender         User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver       User          @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  isRead         Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  lastMessageFor Conversation? @relation("ConversationLastMessage")
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+}
+
 enum GigStatus {
   DRAFT
   ACTIVE
   PAUSED
   COMPLETED
+}
+
+enum HireStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  COMPLETED
+  CANCELLED
+  FAILED
 }

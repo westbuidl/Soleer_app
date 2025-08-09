@@ -6,7 +6,7 @@ import { X } from 'lucide-react';
 import Footer from "@/components/sections/Footer";
 import Navbar from "@/components/common/Navbar";
 import "../app/globals.css";
-import ComingSoonModal from './ComingSoonModal';
+
 
 
 interface Freelancer {

@@ -1,34 +1,80 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Footer from "@/components/sections/Footer";
 import Navbar from "@/components/common/Navbar";
-import { ChevronLeft, ChevronRight, ChevronDown, Loader2, Edit3, Pause, Play, Trash2, UploadCloud, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Loader2, Edit3, Pause, Play, Trash2, UploadCloud, X, Eye, Calendar, TrendingUp, DollarSign, Clock, Star, MessageCircle, User } from 'lucide-react';
 import "../app/globals.css";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useRouter } from 'next/router';
-//import React, { useState, useCallback } from 'react';
-//import { X, UploadCloud, Loader2, Edit3, Trash2, Pause, Play } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
 
 // Interface definitions
 interface Gig {
-  id: number;
+  id: string;
   title: string;
   description: string;
   image: string | null;
   amount: number;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+  views: number;
+  createdAt: string;
+  updatedAt: string;
+  category?: string;
+  tags?: string[];
+}
+
+interface SavedGig {
+  id: string;
+  gig: Gig;
+  createdAt: string;
+}
+
+interface Hire {
+  id: string;
+  gig: Gig;
+  client: {
+    id: string;
+    username: string | null;
+    profileImage: string | null;
+    walletAddress: string;
+  };
+  amount: number;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'COMPLETED' | 'CANCELLED';
+  message: string | null;
+  deadline: string | null;
+  createdAt: string;
+}
+
+interface Transaction {
+  id: string;
+  type: 'EARNING' | 'PAYMENT' | 'REFUND';
+  amount: number;
+  description: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED';
+  transactionId: string | null;
+  createdAt: string;
+}
+
+interface DashboardStats {
+  totalEarnings: number;
+  pendingPayments: number;
+  gigsCompleted: number;
+  totalGigs: number;
+  activeGigs: number;
+  completionRate: number;
+  totalViews: number;
+  averageRating: number;
 }
 
 interface GigCardProps {
   image: string;
-  status: 'completed' | 'active';
+  status: 'completed' | 'active' | 'paused' | 'draft';
   title: string;
   description: string;
   price: number;
   gig: Gig;
   onManage: (gig: Gig) => void;
+  views?: number;
 }
 
 interface Tab {
@@ -52,12 +98,13 @@ interface TimeRangeDropdownProps {
   onSelect: (range: string) => void;
   className?: string;
 }
+
 interface EditGigModalProps {
   isOpen: boolean;
   onClose: () => void;
   gig: Gig | null;
   onGigUpdated: (updatedGig: Gig) => void;
-  onGigDeleted: (gigId: number) => void;
+  onGigDeleted: (gigId: string) => void;
 }
 
 interface EditFormData {
@@ -77,7 +124,6 @@ interface ToastAlert {
   type: ToastType;
   message: string;
 }
-
 
 const TimeRangeDropdown: React.FC<TimeRangeDropdownProps> = ({ selectedRange, onSelect, className = '' }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -135,56 +181,217 @@ const TimeRangeDropdown: React.FC<TimeRangeDropdownProps> = ({ selectedRange, on
   );
 };
 
+const GigCard: React.FC<GigCardProps> = ({ image, status, title, description, price, gig, onManage, views = 0 }) => {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'active': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'paused': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+      case 'draft': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    }
+  };
 
-const GigCard: React.FC<GigCardProps> = ({ image, status, title, description, price, gig, onManage }) => (
+  return (
+    <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full max-w-[280px]">
+      <div className="relative h-[160px] overflow-hidden">
+        <img
+          src={image || '/images/default-gig.png'}
+          alt={title}
+          className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
+        />
+        <div className="absolute top-2 right-2 flex items-center space-x-1 bg-[#26272B]/80 backdrop-blur-sm rounded px-2 py-1">
+          <Eye className="w-3 h-3 text-gray-400" />
+          <span className="text-xs text-gray-400">{views}</span>
+        </div>
+        <button className="absolute top-2 left-2 p-1 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </button>
+      </div>
+      <div className="p-3">
+        <div className="flex items-center space-x-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity">
+          <div className="w-4 h-4 rounded-full bg-[#8B5CF6]"></div>
+          <span className="text-white text-xs font-medium truncate">You</span>
+        </div>
+        <h3 className="text-white font-semibold text-sm mb-2 line-clamp-1 group-hover:text-[#8B5CF6] transition-colors">{title}</h3>
+        <p className="text-gray-400 text-xs mb-3 line-clamp-2 leading-relaxed">{description}</p>
+        <div className="flex justify-between items-center">
+          {status === 'completed' ? (
+            <span className={`px-3 py-1 rounded text-xs font-medium border ${getStatusColor(status)}`}>
+              Completed
+            </span>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                onManage(gig);
+              }}
+              className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200"
+            >
+              MANAGE
+            </button>
+          )}
+          <div className="flex items-center space-x-1">
+            <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3" />
+            <span className="text-white text-xs font-medium group-hover:text-[#8B5CF6] transition-colors">{price} Sol</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SavedGigCard: React.FC<{ savedGig: SavedGig; onRemove: (id: string) => void }> = ({ savedGig, onRemove }) => (
   <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full max-w-[280px]">
     <div className="relative h-[160px] overflow-hidden">
       <img
-        src={image || '/images/default-gig.png'}
-        alt={title}
+        src={savedGig.gig.image || '/images/default-gig.png'}
+        alt={savedGig.gig.title}
         className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
       />
-      <button className="absolute top-2 right-2 p-1 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white">
-          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
-        </svg>
+      <button 
+        onClick={() => onRemove(savedGig.id)}
+        className="absolute top-2 right-2 p-1 bg-red-500/80 backdrop-blur-sm rounded hover:bg-red-500 transition-colors"
+      >
+        <X className="w-3 h-3 text-white" />
       </button>
     </div>
     <div className="p-3">
-      <div className="flex items-center space-x-2 mb-2 cursor-pointer hover:opacity-80 transition-opacity">
-        <div className="w-4 h-4 rounded-full bg-[#8B5CF6]"></div>
-        <span className="text-white text-xs font-medium truncate">You</span>
-      </div>
-      <h3 className="text-white font-semibold text-sm mb-2 line-clamp-1 group-hover:text-[#8B5CF6] transition-colors">{title}</h3>
-      <p className="text-gray-400 text-xs mb-3 line-clamp-2 leading-relaxed">{description}</p>
+      <h3 className="text-white font-semibold text-sm mb-2 line-clamp-1">{savedGig.gig.title}</h3>
+      <p className="text-gray-400 text-xs mb-3 line-clamp-2">{savedGig.gig.description}</p>
       <div className="flex justify-between items-center">
-        {status === 'completed' ? (
-          <span className="bg-green-500/20 text-green-400 px-3 py-1 rounded text-xs font-medium border border-green-500/30">
-            Completed
-          </span>
-        ) : (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              onManage(gig);
-            }}
-            className="bg-[#1E1E1E] text-white px-3 py-1 rounded text-xs hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200"
-          >
-            MANAGE
-          </button>
-        )}
+        <span className="text-gray-400 text-xs">
+          Saved {new Date(savedGig.createdAt).toLocaleDateString()}
+        </span>
         <div className="flex items-center space-x-1">
           <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3" />
-          <span className="text-white text-xs font-medium group-hover:text-[#8B5CF6] transition-colors">{price} Sol</span>
+          <span className="text-white text-xs font-medium">{savedGig.gig.amount} Sol</span>
         </div>
       </div>
     </div>
   </div>
 );
 
-const EmptyState: React.FC<{ message: string }> = ({ message }) => (
+const HireCard: React.FC<{ hire: Hire; onStatusUpdate: (hireId: string, status: string) => void }> = ({ 
+  hire, 
+  onStatusUpdate 
+}) => {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'PENDING': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+      case 'ACCEPTED': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'COMPLETED': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'DECLINED': return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'CANCELLED': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    }
+  };
+
+  return (
+    <div className="bg-[#1A1B1E] rounded-lg p-4 border border-[#26272B]">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="text-white font-semibold text-sm mb-1">{hire.gig.title}</h3>
+          <p className="text-gray-400 text-xs">
+            Client: {hire.client.username || hire.client.walletAddress.slice(0, 8) + '...'}
+          </p>
+        </div>
+        <span className={`px-2 py-1 rounded text-xs font-medium border ${getStatusColor(hire.status)}`}>
+          {hire.status}
+        </span>
+      </div>
+      
+      {hire.message && (
+        <p className="text-gray-300 text-sm mb-3 p-2 bg-[#26272B] rounded">{hire.message}</p>
+      )}
+      
+      <div className="flex justify-between items-center">
+        <div className="flex items-center space-x-1">
+          <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3" />
+          <span className="text-white text-sm font-medium">{hire.amount} SOL</span>
+        </div>
+        
+        {hire.status === 'PENDING' && (
+          <div className="flex space-x-2">
+            <button
+              onClick={() => onStatusUpdate(hire.id, 'ACCEPTED')}
+              className="px-3 py-1 bg-green-500 text-white rounded text-xs hover:bg-green-600 transition-colors"
+            >
+              Accept
+            </button>
+            <button
+              onClick={() => onStatusUpdate(hire.id, 'DECLINED')}
+              className="px-3 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600 transition-colors"
+            >
+              Decline
+            </button>
+          </div>
+        )}
+      </div>
+      
+      {hire.deadline && (
+        <div className="mt-2 flex items-center space-x-1 text-xs text-gray-400">
+          <Calendar className="w-3 h-3" />
+          <span>Deadline: {new Date(hire.deadline).toLocaleDateString()}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TransactionRow: React.FC<{ transaction: Transaction }> = ({ transaction }) => {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'COMPLETED': return 'text-green-400';
+      case 'PENDING': return 'text-yellow-400';
+      case 'FAILED': return 'text-red-400';
+      default: return 'text-gray-400';
+    }
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'EARNING': return <TrendingUp className="w-4 h-4 text-green-400" />;
+      case 'PAYMENT': return <DollarSign className="w-4 h-4 text-blue-400" />;
+      case 'REFUND': return <Clock className="w-4 h-4 text-yellow-400" />;
+      default: return <DollarSign className="w-4 h-4 text-gray-400" />;
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between p-4 bg-[#26272B] rounded-lg mb-2">
+      <div className="flex items-center space-x-3">
+        {getTypeIcon(transaction.type)}
+        <div>
+          <p className="text-white text-sm font-medium">{transaction.description}</p>
+          <p className="text-gray-400 text-xs">
+            {new Date(transaction.createdAt).toLocaleDateString()} • 
+            <span className={`ml-1 ${getStatusColor(transaction.status)}`}>
+              {transaction.status}
+            </span>
+          </p>
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="flex items-center space-x-1">
+          <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+          <span className="text-white font-medium">{transaction.amount} SOL</span>
+        </div>
+        {transaction.transactionId && (
+          <p className="text-gray-400 text-xs">
+            {transaction.transactionId.slice(0, 8)}...
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const EmptyState: React.FC<{ message: string; icon?: React.ReactNode }> = ({ message, icon }) => (
   <div className="flex flex-col items-center justify-center py-12 px-4 bg-gray-900 rounded-lg">
-    <img src="/images/icons/smart-contract.png" alt="No data" className="w-20 h-20 mb-4 opacity-50" />
+    {icon || <img src="/images/icons/smart-contract.png" alt="No data" className="w-20 h-20 mb-4 opacity-50" />}
     <p className="text-gray-400 text-center">{message}</p>
   </div>
 );
@@ -279,15 +486,14 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
   const [toastAlert, setToastAlert] = useState<ToastAlert | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Initialize form data when gig changes
   React.useEffect(() => {
     if (gig && isOpen) {
       setFormData({
         title: gig.title || '',
         description: gig.description || '',
         amount: gig.amount !== undefined && gig.amount !== null ? gig.amount.toString() : '',
-        category: '', // Add category to Gig interface if needed
-        tags: '', // Add tags to Gig interface if needed
+        category: gig.category || '',
+        tags: gig.tags ? gig.tags.join(', ') : '',
         status: gig.status || 'ACTIVE',
         image: null
       });
@@ -323,26 +529,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
     }
   };
 
-
-  const uploadImage = async (file: File): Promise<string> => {
-    const formDataUpload = new FormData();
-    formDataUpload.append('file', file);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formDataUpload,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Image upload failed');
-    }
-
-    const data = await response.json();
-    return data.url;
-  };
-
-  // Mock update function (replace with actual API call)
   const handleUpdateGig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gig) return;
@@ -360,18 +546,46 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
         throw new Error('Please enter a valid amount between 0.01 and 1000 SOL');
       }
 
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      let imageUrl = gig.image;
+      if (formData.image) {
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', formData.image);
+        
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formDataUpload,
+        });
+        
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json();
+          imageUrl = uploadData.url;
+        }
+      }
 
-      const updatedGig: Gig = {
-        ...gig,
+      const updateData = {
         title: formData.title,
         description: formData.description,
         amount: amount,
         status: formData.status,
-        image: previewUrl
+        category: formData.category || null,
+        tags: formData.tags ? formData.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [],
+        image: imageUrl
       };
 
+      const response = await fetch(`/api/gigs/${gig.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update gig');
+      }
+
+      const updatedGig = await response.json();
       onGigUpdated(updatedGig);
       showToast('success', 'Gig updated successfully! 🎉');
 
@@ -387,14 +601,19 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
     }
   };
 
-  // Mock delete function (replace with actual API call)
   const handleDeleteGig = async () => {
     if (!gig) return;
 
     setIsLoading(true);
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch(`/api/gigs/${gig.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete gig');
+      }
 
       onGigDeleted(gig.id);
       showToast('success', 'Gig deleted successfully');
@@ -416,14 +635,20 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
 
     setIsLoading(true);
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const response = await fetch(`/api/gigs/${gig.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
 
-      const updatedGig: Gig = {
-        ...gig,
-        status: newStatus
-      };
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update gig status');
+      }
 
+      const updatedGig = await response.json();
       onGigUpdated(updatedGig);
       setFormData({ ...formData, status: newStatus });
       showToast('success', `Gig ${newStatus.toLowerCase()} successfully`);
@@ -479,7 +704,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
             </div>
           </div>
 
-          {/* Quick Actions */}
           <div className="flex flex-wrap gap-2 mb-6 p-4 bg-[#26272B] rounded-lg">
             <button
               onClick={() => handleStatusChange(gig.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE')}
@@ -534,7 +758,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
           )}
 
           <form onSubmit={handleUpdateGig} className="space-y-6">
-            {/* Image Upload */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Gig Image
@@ -575,7 +798,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
               </div>
             </div>
 
-            {/* Title */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Title <span className="text-red-400">*</span>
@@ -592,7 +814,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
               />
             </div>
 
-            {/* Description */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Description <span className="text-red-400">*</span>
@@ -609,7 +830,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Category */}
               <div>
                 <label className="block text-white text-sm font-medium mb-2">
                   Category
@@ -624,7 +844,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
                 />
               </div>
 
-              {/* Amount */}
               <div>
                 <label className="block text-white text-sm font-medium mb-2">
                   Amount (SOL) <span className="text-red-400">*</span>
@@ -650,7 +869,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
               </div>
             </div>
 
-            {/* Tags */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Tags <span className="text-gray-400">(comma-separated)</span>
@@ -665,7 +883,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
               />
             </div>
 
-            {/* Status */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Status
@@ -714,7 +931,6 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
   );
 };
 
-
 const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('stats');
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -725,9 +941,37 @@ const Dashboard: React.FC = () => {
     transactions: 'This month'
   });
   const [showAlert, setShowAlert] = useState(false);
+  
+  // Data states
   const [gigs, setGigs] = useState<Gig[]>([]);
+  const [savedGigs, setSavedGigs] = useState<SavedGig[]>([]);
+  const [hires, setHires] = useState<Hire[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalEarnings: 0,
+    pendingPayments: 0,
+    gigsCompleted: 0,
+    totalGigs: 0,
+    activeGigs: 0,
+    completionRate: 0,
+    totalViews: 0,
+    averageRating: 0
+  });
+  
+  // Loading states
   const [isLoadingGigs, setIsLoadingGigs] = useState(false);
+  const [isLoadingSavedGigs, setIsLoadingSavedGigs] = useState(false);
+  const [isLoadingHires, setIsLoadingHires] = useState(false);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  
+  // Error states
   const [gigError, setGigError] = useState('');
+  const [savedGigsError, setSavedGigsError] = useState('');
+  const [hiresError, setHiresError] = useState('');
+  const [transactionsError, setTransactionsError] = useState('');
+  const [statsError, setStatsError] = useState('');
+  
   const { publicKey, connected } = useWallet();
   const router = useRouter();
 
@@ -737,49 +981,230 @@ const Dashboard: React.FC = () => {
       ...prev,
       [metric]: range
     }));
+    // Refetch data when time range changes
+    if (connected && publicKey) {
+      fetchStats();
+      if (activeTab === 'stats') {
+        fetchTransactions();
+      }
+    }
+  };
+
+  // Fetch dashboard stats
+  const fetchStats = async () => {
+    if (!connected || !publicKey) return;
+
+    setIsLoadingStats(true);
+    setStatsError('');
+    try {
+      const walletAddress = publicKey.toString();
+      const encodedWallet = encodeURIComponent(walletAddress);
+      const response = await fetch(`/api/dashboard/stats?wallet=${encodedWallet}&timeRange=${timeRanges.earnings}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch stats');
+      }
+
+      const statsData = await response.json();
+      setStats(statsData);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      setStatsError(error instanceof Error ? error.message : 'Failed to load stats');
+    } finally {
+      setIsLoadingStats(false);
+    }
   };
 
   // Fetch gigs for the connected wallet
+  const fetchGigs = async () => {
+    if (!connected || !publicKey) {
+      setGigs([]);
+      setIsLoadingGigs(false);
+      return;
+    }
+
+    setIsLoadingGigs(true);
+    setGigError('');
+    try {
+      const walletAddress = publicKey.toString();
+      const encodedWallet = encodeURIComponent(walletAddress);
+      const response = await fetch(`/api/gigs?wallet=${encodedWallet}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch gigs');
+      }
+
+      const fetchedGigs = await response.json();
+      setGigs(fetchedGigs);
+    } catch (error) {
+      console.error('Error fetching gigs:', error);
+      setGigError(error instanceof Error ? error.message : 'Failed to load gigs');
+    } finally {
+      setIsLoadingGigs(false);
+    }
+  };
+
+  // Fetch saved gigs
+  const fetchSavedGigs = async () => {
+    if (!connected || !publicKey) {
+      setSavedGigs([]);
+      setIsLoadingSavedGigs(false);
+      return;
+    }
+
+    setIsLoadingSavedGigs(true);
+    setSavedGigsError('');
+    try {
+      const walletAddress = publicKey.toString();
+      const encodedWallet = encodeURIComponent(walletAddress);
+      const response = await fetch(`/api/saved-gigs?wallet=${encodedWallet}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch saved gigs');
+      }
+
+      const fetchedSavedGigs = await response.json();
+      setSavedGigs(fetchedSavedGigs);
+    } catch (error) {
+      console.error('Error fetching saved gigs:', error);
+      setSavedGigsError(error instanceof Error ? error.message : 'Failed to load saved gigs');
+    } finally {
+      setIsLoadingSavedGigs(false);
+    }
+  };
+
+  // Fetch hires
+  const fetchHires = async () => {
+    if (!connected || !publicKey) {
+      setHires([]);
+      setIsLoadingHires(false);
+      return;
+    }
+
+    setIsLoadingHires(true);
+    setHiresError('');
+    try {
+      const walletAddress = publicKey.toString();
+      const encodedWallet = encodeURIComponent(walletAddress);
+      const response = await fetch(`/api/hires?wallet=${encodedWallet}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch hires');
+      }
+
+      const fetchedHires = await response.json();
+      setHires(fetchedHires);
+    } catch (error) {
+      console.error('Error fetching hires:', error);
+      setHiresError(error instanceof Error ? error.message : 'Failed to load hires');
+    } finally {
+      setIsLoadingHires(false);
+    }
+  };
+
+  // Fetch transactions
+  const fetchTransactions = async () => {
+    if (!connected || !publicKey) {
+      setTransactions([]);
+      setIsLoadingTransactions(false);
+      return;
+    }
+
+    setIsLoadingTransactions(true);
+    setTransactionsError('');
+    try {
+      const walletAddress = publicKey.toString();
+      const encodedWallet = encodeURIComponent(walletAddress);
+      const response = await fetch(`/api/transactions?wallet=${encodedWallet}&timeRange=${timeRanges.transactions}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch transactions');
+      }
+
+      const fetchedTransactions = await response.json();
+      setTransactions(fetchedTransactions);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      setTransactionsError(error instanceof Error ? error.message : 'Failed to load transactions');
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
+
+  // Effect to fetch data based on active tab
   useEffect(() => {
-    const fetchGigs = async () => {
-      if (!connected || !publicKey || activeTab !== 'active') {
-        setGigs([]);
-        setIsLoadingGigs(false);
-        return;
+    if (!connected || !publicKey) return;
+
+    switch (activeTab) {
+      case 'stats':
+        fetchStats();
+        fetchTransactions();
+        break;
+      case 'saved':
+        fetchSavedGigs();
+        break;
+      case 'hires':
+        fetchHires();
+        break;
+      case 'active':
+      case 'completed':
+        fetchGigs();
+        break;
+      default:
+        break;
+    }
+  }, [connected, publicKey, activeTab, timeRanges]);
+
+  // Remove saved gig
+  const handleRemoveSavedGig = async (savedGigId: string) => {
+    try {
+      const response = await fetch(`/api/saved-gigs/${savedGigId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to remove saved gig');
       }
 
-      setIsLoadingGigs(true);
-      setGigError('');
-      try {
-        const walletAddress = publicKey.toString();
-        const encodedWallet = encodeURIComponent(walletAddress);
-        console.log('Fetching gigs for wallet:', walletAddress);
-        const response = await fetch(`/api/gigs?wallet=${encodedWallet}`);
+      setSavedGigs(prev => prev.filter(sg => sg.id !== savedGigId));
+    } catch (error) {
+      console.error('Error removing saved gig:', error);
+    }
+  };
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to fetch gigs');
-        }
+  // Update hire status
+  const handleHireStatusUpdate = async (hireId: string, status: string) => {
+    try {
+      const response = await fetch(`/api/hires/${hireId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      });
 
-        const fetchedGigs = await response.json();
-        console.log('Fetched gigs:', fetchedGigs);
-        setGigs(fetchedGigs);
-      } catch (error) {
-        console.error('Error fetching gigs:', error);
-        setGigError(error instanceof Error ? error.message : 'Failed to load gigs');
-      } finally {
-        setIsLoadingGigs(false);
+      if (!response.ok) {
+        throw new Error('Failed to update hire status');
       }
-    };
 
-    fetchGigs();
-  }, [connected, publicKey, activeTab]);
+      const updatedHire = await response.json();
+      setHires(prev => prev.map(h => h.id === hireId ? updatedHire : h));
+    } catch (error) {
+      console.error('Error updating hire status:', error);
+    }
+  };
 
   const renderStatsCard = (
     label: string,
     value: string | number,
     icon?: React.ReactNode,
-    timeRangeKey?: keyof typeof timeRanges
+    timeRangeKey?: keyof typeof timeRanges,
+    isLoading?: boolean
   ) => (
     <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
       <div className="flex justify-between items-center mb-4">
@@ -793,16 +1218,18 @@ const Dashboard: React.FC = () => {
       </div>
       <div className="flex items-center space-x-2">
         {icon}
-        <span className="text-2xl font-medium">{value}</span>
+        {isLoading ? (
+          <Loader2 className="w-6 h-6 animate-spin text-white" />
+        ) : (
+          <span className="text-2xl font-medium">{value}</span>
+        )}
       </div>
     </div>
   );
 
-
   const [selectedGigForEdit, setSelectedGigForEdit] = useState<Gig | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // Add these callback functions to your Dashboard component:
   const handleManageClick = useCallback((gig: Gig) => {
     setSelectedGigForEdit(gig);
     setIsEditModalOpen(true);
@@ -812,14 +1239,15 @@ const Dashboard: React.FC = () => {
     setGigs(prevGigs =>
       prevGigs.map(gig => gig.id === updatedGig.id ? updatedGig : gig)
     );
+    // Update stats after gig update
+    fetchStats();
   }, []);
 
-  const handleGigDeleted = useCallback((gigId: number) => {
+  const handleGigDeleted = useCallback((gigId: string) => {
     setGigs(prevGigs => prevGigs.filter(gig => gig.id !== gigId));
+    // Update stats after gig deletion
+    fetchStats();
   }, []);
-
-
-
 
   const tabs: Tab[] = [
     { id: 'stats', label: 'Job earnings & stats' },
@@ -841,10 +1269,8 @@ const Dashboard: React.FC = () => {
   ];
 
   useEffect(() => {
-    // Check wallet connection status
     if (!connected) {
       setShowAlert(true);
-      // Redirect after a short delay
       const timer = setTimeout(() => {
         router.push('/');
       }, 3000);
@@ -892,42 +1318,76 @@ const Dashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
               {renderStatsCard(
                 "Earnings",
-                "0 SOL",
+                `${stats.totalEarnings} SOL`,
                 <img src="/images/sol-logo.png" alt="SOL" className="w-5 h-5" />,
-                "earnings"
+                "earnings",
+                isLoadingStats
               )}
               {renderStatsCard(
                 "Pending payments",
-                "0 SOL",
+                `${stats.pendingPayments} SOL`,
                 <img src="/images/sol-logo.png" alt="SOL" className="w-5 h-5" />,
-                "pendingPayments"
+                "pendingPayments",
+                isLoadingStats
               )}
               {renderStatsCard(
                 "Gigs Completed",
-                "0",
-                undefined,
-                "gigsCompleted"
+                stats.gigsCompleted,
+                <Star className="w-5 h-5 text-yellow-400" />,
+                "gigsCompleted",
+                isLoadingStats
               )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
               <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
                 <span className="text-gray-400">Total Gigs worked on</span>
-                <p className="text-2xl font-medium mt-2">0</p>
+                <div className="flex items-center space-x-2 mt-2">
+                  <User className="w-5 h-5 text-blue-400" />
+                  {isLoadingStats ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-white" />
+                  ) : (
+                    <p className="text-2xl font-medium">{stats.totalGigs}</p>
+                  )}
+                </div>
               </div>
               <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400">Active Gigs</span>
-                  <button className="text-purple-500 hover:text-purple-400">View</button>
+                  <button 
+                    onClick={() => setActiveTab('active')}
+                    className="text-purple-500 hover:text-purple-400"
+                  >
+                    View
+                  </button>
                 </div>
-                <p className="text-2xl font-medium mt-2">{gigs.length}</p>
+                <div className="flex items-center space-x-2 mt-2">
+                  <TrendingUp className="w-5 h-5 text-green-400" />
+                  {isLoadingStats ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-white" />
+                  ) : (
+                    <p className="text-2xl font-medium">{stats.activeGigs}</p>
+                  )}
+                </div>
               </div>
               <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Gigs Completion rate</span>
-                  <button className="text-purple-500 hover:text-purple-400">View</button>
+                  <span className="text-gray-400">Completion rate</span>
+                  <button 
+                    onClick={() => setActiveTab('completed')}
+                    className="text-purple-500 hover:text-purple-400"
+                  >
+                    View
+                  </button>
                 </div>
-                <p className="text-2xl font-medium mt-2">0%</p>
+                <div className="flex items-center space-x-2 mt-2">
+                  <Star className="w-5 h-5 text-yellow-400" />
+                  {isLoadingStats ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-white" />
+                  ) : (
+                    <p className="text-2xl font-medium">{Math.round(stats.completionRate)}%</p>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -941,20 +1401,94 @@ const Dashboard: React.FC = () => {
                 />
               </div>
 
-              <EmptyState message="No transactions yet. Your transaction history will appear here." />
+              {isLoadingTransactions ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-white" />
+                  <span className="ml-2 text-white">Loading transactions...</span>
+                </div>
+              ) : transactionsError ? (
+                <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+                  <p className="text-red-500 font-medium">{transactionsError}</p>
+                </div>
+              ) : transactions.length === 0 ? (
+                <EmptyState 
+                  message="No transactions yet. Your transaction history will appear here." 
+                  icon={<DollarSign className="w-20 h-20 mb-4 opacity-50 text-gray-400" />}
+                />
+              ) : (
+                <div className="space-y-2">
+                  {transactions.map(transaction => (
+                    <TransactionRow key={transaction.id} transaction={transaction} />
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}
 
         {activeTab === 'saved' && (
-          <EmptyState message="No saved gigs yet. Your saved gigs will appear here." />
+          <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold mb-6">Saved Gigs</h2>
+            {isLoadingSavedGigs ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-white" />
+                <span className="ml-2 text-white">Loading saved gigs...</span>
+              </div>
+            ) : savedGigsError ? (
+              <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+                <p className="text-red-500 font-medium">{savedGigsError}</p>
+              </div>
+            ) : savedGigs.length === 0 ? (
+              <EmptyState 
+                message="No saved gigs yet. Your saved gigs will appear here." 
+                icon={<Star className="w-20 h-20 mb-4 opacity-50 text-gray-400" />}
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                {savedGigs.map(savedGig => (
+                  <SavedGigCard
+                    key={savedGig.id}
+                    savedGig={savedGig}
+                    onRemove={handleRemoveSavedGig}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'hires' && (
-          <EmptyState message="No hires yet. Your hired freelancers will appear here." />
+          <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold mb-6">My Hires</h2>
+            {isLoadingHires ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-white" />
+                <span className="ml-2 text-white">Loading hires...</span>
+              </div>
+            ) : hiresError ? (
+              <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+                <p className="text-red-500 font-medium">{hiresError}</p>
+              </div>
+            ) : hires.length === 0 ? (
+              <EmptyState 
+                message="No hires yet. Your hired freelancers will appear here." 
+                icon={<User className="w-20 h-20 mb-4 opacity-50 text-gray-400" />}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {hires.map(hire => (
+                  <HireCard
+                    key={hire.id}
+                    hire={hire}
+                    onStatusUpdate={handleHireStatusUpdate}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
-        {activeTab === 'active' && (
+ {activeTab === 'active' && (
           <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
             <h2 className="text-xl sm:text-2xl font-bold mb-6">Active Jobs</h2>
             {isLoadingGigs ? (
@@ -990,8 +1524,20 @@ const Dashboard: React.FC = () => {
         {activeTab === 'completed' && (
           <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
             <h2 className="text-xl sm:text-2xl font-bold mb-6">Completed Jobs</h2>
-            {gigs.filter(g => g.status === 'COMPLETED').length === 0 ? (
-              <EmptyState message="No completed jobs yet. Your finished gigs will appear here." />
+            {isLoadingGigs ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-white" />
+                <span className="ml-2 text-white">Loading completed gigs...</span>
+              </div>
+            ) : gigError ? (
+              <div className="bg-red-900/20 border border-red-500 rounded-lg p-4">
+                <p className="text-red-500 font-medium">{gigError}</p>
+              </div>
+            ) : gigs.filter(g => g.status === 'COMPLETED').length === 0 ? (
+              <EmptyState 
+                message="No completed jobs yet. Your finished gigs will appear here." 
+                icon={<Star className="w-20 h-20 mb-4 opacity-50 text-gray-400" />}
+              />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                 {gigs.filter(g => g.status === 'COMPLETED').map(gig => (
@@ -1004,6 +1550,7 @@ const Dashboard: React.FC = () => {
                     price={gig.amount}
                     gig={gig}
                     onManage={handleManageClick}
+                    views={gig.views}
                   />
                 ))}
               </div>
@@ -1012,13 +1559,70 @@ const Dashboard: React.FC = () => {
         )}
 
         {activeTab === 'reviews' && (
-          <EmptyState message="No reviews yet. Your gig reviews will appear here." />
+          <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold mb-6">Reviews</h2>
+            <EmptyState 
+              message="No reviews yet. Your gig reviews will appear here." 
+              icon={<MessageCircle className="w-20 h-20 mb-4 opacity-50 text-gray-400" />}
+            />
+          </div>
         )}
 
         {activeTab === 'analytics' && (
-          <EmptyState message="No analytics data available yet. Your performance metrics will appear here." />
+          <div className="bg-gray-900 rounded-lg p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold mb-6">Analytics</h2>
+            
+            {/* Analytics Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <div className="bg-[#26272B] rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-400 text-sm">Total Views</p>
+                    <p className="text-2xl font-bold text-white">{stats.totalViews}</p>
+                  </div>
+                  <Eye className="w-8 h-8 text-purple-500" />
+                </div>
+              </div>
+              
+              <div className="bg-[#26272B] rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-400 text-sm">Average Rating</p>
+                    <p className="text-2xl font-bold text-white">{stats.averageRating.toFixed(1)}</p>
+                  </div>
+                  <Star className="w-8 h-8 text-yellow-500" />
+                </div>
+              </div>
+              
+              <div className="bg-[#26272B] rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-400 text-sm">Response Rate</p>
+                    <p className="text-2xl font-bold text-white">95%</p>
+                  </div>
+                  <MessageCircle className="w-8 h-8 text-blue-500" />
+                </div>
+              </div>
+              
+              <div className="bg-[#26272B] rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-400 text-sm">On-time Delivery</p>
+                    <p className="text-2xl font-bold text-white">98%</p>
+                  </div>
+                  <Clock className="w-8 h-8 text-green-500" />
+                </div>
+              </div>
+            </div>
+
+            <EmptyState 
+              message="Detailed analytics data will be available soon. Track your performance metrics here." 
+              icon={<TrendingUp className="w-20 h-20 mb-4 opacity-50 text-gray-400" />}
+            />
+          </div>
         )}
       </main>
+
       <EditGigModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
@@ -1027,10 +1631,12 @@ const Dashboard: React.FC = () => {
         onGigDeleted={handleGigDeleted}
       />
 
-
       <Footer />
     </div>
   );
 };
 
 export default Dashboard;
+
+
+

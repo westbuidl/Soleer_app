@@ -1,4 +1,3 @@
-// pages/gig/[id].tsx
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { GetServerSideProps } from 'next';
@@ -274,7 +273,10 @@ const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
                       <button className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-4 px-6 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium text-lg">
                         HIRE {gig.freelancer.name.split(' ')[0].toUpperCase()}
                       </button>
-                      <button className="w-full bg-[#26272B] text-white py-3 px-6 rounded-lg hover:bg-[#333] transition-colors border border-gray-600">
+                      <button
+                        onClick={() => router.push(`/inbox?freelancerId=${gig.userId}`)}
+                        className="w-full bg-[#26272B] text-white py-3 px-6 rounded-lg hover:bg-[#333] transition-colors border border-gray-600"
+                      >
                         Contact Freelancer
                       </button>
                     </div>
@@ -287,7 +289,7 @@ const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
           </div>
         </WalletModalProvider>
       </WalletProvider>
-    </ConnectionProvider>
+      </ConnectionProvider>
   );
 };
 

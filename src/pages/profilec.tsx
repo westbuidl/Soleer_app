@@ -7,7 +7,7 @@ import Navbar from '@/components/common/Navbar';
 import Footer from '@/components/sections/Footer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import "../app/globals.css";
+import "../olapp/globals.css";
 
 const ProfilePage = () => {
   const router = useRouter();

@@ -2,27 +2,29 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import Footer from "@/components/sections/Footer";
 import Navbar from './Navbar';
+//import { useRouter } from 'next/router';
 import "@/app/globals.css";
-import ComingSoonModal from '../../pages/ComingSoonModal';
-import { Plus, UploadCloud, X, Loader2, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight, Grid3x3, List, Share2, Copy, Check, ExternalLink } from 'lucide-react';
+import { Plus, UploadCloud, X, Loader2, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight, Grid3x3, List, Share2, Copy, Check, ExternalLink, Clock, AlertCircle, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from 'next/navigation';
+
 
 import {
   ConnectionProvider,
   WalletProvider,
   useWallet,
 } from '@solana/wallet-adapter-react';
-import { 
-  WalletModalProvider, 
-  WalletMultiButton, 
-  WalletDisconnectButton 
+import {
+  WalletModalProvider,
+  WalletMultiButton,
+  WalletDisconnectButton
 } from '@solana/wallet-adapter-react-ui';
-import { clusterApiUrl } from '@solana/web3.js';
-import { 
-  PhantomWalletAdapter, 
-  SolflareWalletAdapter 
+import { clusterApiUrl, Transaction } from '@solana/web3.js';
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter
 } from '@solana/wallet-adapter-wallets';
+import router from 'next/router';
 
 require('@solana/wallet-adapter-react-ui/styles.css');
 
@@ -62,12 +64,22 @@ interface FreelancerProfileModalProps {
   freelancer: Freelancer | null;
 }
 
+interface SavedGig {
+  id: string;
+  gigId: string;
+  userId: string;
+  createdAt: string;
+}
+
 interface JobCardProps {
   job: Job;
   onProfileClick: (freelancer: Freelancer) => void;
-  onGigClick: (job: Job) => void; // Added for gig detail view
+  onGigClick: (job: Job) => void;
   viewMode: 'grid' | 'list';
-  currentUserId?: string; // Added to identify current user
+  currentUserId?: string;
+  onHireClick: (job: Job) => void;
+  onSaveClick: (job: Job) => void; // Add save click handler
+  savedGigs: Set<string>; // Add saved gigs set
 }
 
 interface PostGigModalProps {
@@ -82,6 +94,8 @@ interface GigDetailModalProps {
   currentUserId?: string;
 }
 
+
+
 // Search and Filter interfaces
 interface SearchFilters {
   query: string;
@@ -90,6 +104,485 @@ interface SearchFilters {
   maxPrice: string;
   sortBy: 'newest' | 'oldest' | 'price-low' | 'price-high' | 'title';
 }
+
+// New Hire-related interfaces
+interface HireRequest {
+  id: string;
+  gigId: string;
+  gigTitle: string;
+  freelancerId: string;
+  freelancerName: string;
+  clientId: string;
+  clientName: string;
+  amount: number;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'COMPLETED' | 'CANCELLED';
+  message: string;
+  deadline?: string;
+  requirements?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface HireModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  gig: Job | null;
+  currentUserId?: string;
+  onHireSuccess: () => void;
+}
+
+interface HireRequestModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  hireRequests: HireRequest[];
+  onStatusUpdate: (requestId: string, status: HireRequest['status']) => void;
+}
+
+
+// Hire Modal Component
+const HireModal: React.FC<HireModalProps> = ({ isOpen, onClose, gig, currentUserId, onHireSuccess }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [toastAlert, setToastAlert] = useState<ToastAlert | null>(null);
+  const [formData, setFormData] = useState({
+    message: '',
+    deadline: '',
+    requirements: '',
+    customAmount: '',
+    useCustomAmount: false
+  });
+
+  const { connected, publicKey, signTransaction } = useWallet();
+  const router = useRouter();
+
+  const showToast = (type: ToastType, message: string) => {
+    setToastAlert({ type, message });
+    setTimeout(() => setToastAlert(null), 5000);
+  };
+
+  useEffect(() => {
+    if (isOpen && gig) {
+      setFormData({
+        message: `Hi ${gig.freelancer.name}, I'm interested in hiring you for "${gig.title}". Let's discuss the details!`,
+        deadline: '',
+        requirements: '',
+        customAmount: gig.price.toString(),
+        useCustomAmount: false
+      });
+      setError('');
+    }
+  }, [isOpen, gig]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gig || !currentUserId || !connected || !publicKey) {
+      setError('Please connect your wallet and ensure you are logged in');
+      showToast('error', 'Wallet connection required');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      // Validate form data
+      if (!formData.message.trim()) {
+        throw new Error('Please provide a message to the freelancer');
+      }
+
+      if (formData.deadline && new Date(formData.deadline) <= new Date()) {
+        throw new Error('Deadline must be in the future');
+      }
+
+      const finalAmount = formData.useCustomAmount ?
+        parseFloat(formData.customAmount) : gig.price;
+
+      if (isNaN(finalAmount) || finalAmount <= 0) {
+        throw new Error('Please provide a valid amount');
+      }
+
+      // Create hire request payload
+      const hireRequestData = {
+        gigId: gig.id,
+        clientWallet: publicKey.toString(),
+      };
+
+      console.log('Sending hire request:', hireRequestData);
+
+      // Send hire request to API
+      const hireResponse = await fetch('/api/hire-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${publicKey.toString()}`
+        },
+        body: JSON.stringify(hireRequestData),
+      });
+
+      console.log('Hire response status:', hireResponse.status);
+      const responseText = await hireResponse.text();
+      console.log('Hire response text:', responseText);
+
+      if (!hireResponse.ok) {
+        try {
+          const parsedError = JSON.parse(responseText);
+          throw new Error(parsedError.error || `Failed to create hire request: HTTP ${hireResponse.status}`);
+        } catch {
+          throw new Error(`Unexpected response from server: ${responseText.substring(0, 200)}...`);
+        }
+      }
+
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        throw new Error('Failed to parse response as JSON');
+      }
+
+      const { hireId, transaction: transactionBase64, conversationId } = responseData;
+
+      // Sign the transaction
+      try {
+        const transactionBuffer = Buffer.from(transactionBase64, 'base64');
+        const transaction = Transaction.from(transactionBuffer);
+        if (!signTransaction) {
+          throw new Error('Wallet does not support transaction signing');
+        }
+        const signedTransaction = await signTransaction(transaction);
+        const serializedSignedTransaction = signedTransaction.serialize().toString('base64');
+
+        console.log('Sending PATCH request for hireId:', hireId);
+
+        // Update hire request with transaction ID
+        const updateResponse = await fetch(`/api/hire-requests/${hireId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicKey.toString()}`
+          },
+          body: JSON.stringify({
+            status: 'PENDING',
+            transactionId: serializedSignedTransaction,
+          }),
+        });
+
+        console.log('Update response status:', updateResponse.status);
+        const updateResponseText = await updateResponse.text();
+        console.log('Update response text:', updateResponseText);
+
+        if (!updateResponse.ok) {
+          try {
+            const errorData = JSON.parse(updateResponseText);
+            throw new Error(errorData.error || 'Failed to update hire request');
+          } catch {
+            throw new Error(`Unexpected update response: ${updateResponseText.substring(0, 200)}...`);
+          }
+        }
+      } catch (signError) {
+        console.error('Transaction signing error:', signError);
+        // Update hire request to FAILED status
+        await fetch(`/api/hire-requests/${hireId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicKey.toString()}`
+          },
+          body: JSON.stringify({
+            status: 'FAILED',
+          }),
+        });
+        throw new Error('Failed to sign transaction');
+      }
+
+      showToast('success', 'Hire request sent successfully! 🎉');
+      onHireSuccess();
+
+      setTimeout(() => {
+        onClose();
+        router.push(`/inbox?conversationId=${conversationId}`);
+      }, 1500);
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      console.error('Hire request error:', err);
+      setError(errorMessage);
+      showToast('error', errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isOpen || !gig) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[80] flex items-center justify-center p-4">
+      <div className="bg-[#1A1B1E] rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-[#26272B] shadow-2xl">
+        {toastAlert && (
+          <div className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${toastAlert.type === 'success' ? 'bg-green-500' :
+              toastAlert.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+            } text-white text-sm font-medium`}>
+            {toastAlert.message}
+          </div>
+        )}
+
+        <div className="sticky top-0 bg-[#1A1B1E] border-b border-[#26272B] p-4 flex justify-between items-center">
+          <h2 className="text-xl font-bold text-white">Hire {gig.freelancer.name}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="p-6">
+          {error && (
+            <Alert className="mb-4 bg-red-500/10 border-red-500/20">
+              <AlertDescription className="text-red-400">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="bg-[#26272B] rounded-lg p-4">
+              <div className="flex items-start space-x-4">
+                <img src={gig.image} alt={gig.title} className="w-16 h-16 rounded-lg object-cover" />
+                <div className="flex-1">
+                  <h3 className="text-white font-semibold mb-1">{gig.title}</h3>
+                  <p className="text-gray-400 text-sm mb-2">{gig.description.substring(0, 100)}...</p>
+                  <div className="flex items-center space-x-2">
+                    <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+                    <span className="text-white font-medium">{gig.price} SOL</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Message to Freelancer <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={formData.message}
+                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 h-32 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent resize-none"
+                placeholder="Describe your project requirements and expectations..."
+                required
+                maxLength={1000}
+              />
+              <p className="text-xs text-gray-500 mt-1">{formData.message.length}/1000 characters</p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="useCustomAmount"
+                  checked={formData.useCustomAmount}
+                  onChange={(e) => setFormData({ ...formData, useCustomAmount: e.target.checked })}
+                  className="w-4 h-4 text-[#8B5CF6] bg-[#26272B] border-gray-600 rounded focus:ring-[#8B5CF6]"
+                />
+                <label htmlFor="useCustomAmount" className="text-white text-sm">
+                  Negotiate custom amount
+                </label>
+              </div>
+
+              {formData.useCustomAmount && (
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2">
+                    Proposed Amount (SOL) <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={formData.customAmount}
+                      onChange={(e) => setFormData({ ...formData, customAmount: e.target.value })}
+                      className="w-full bg-[#26272B] text-white rounded-lg p-3 pr-16 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                      placeholder="0.00"
+                      step="0.01"
+                      min="0.01"
+                      max="10000"
+                      required={formData.useCustomAmount}
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
+                      <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+                      <span className="text-gray-400 text-sm">SOL</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Project Deadline <span className="text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={formData.deadline}
+                onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
+                min={new Date().toISOString().slice(0, 16)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-white text-sm font-medium mb-2">
+                Additional Requirements <span className="text-gray-400">(optional)</span>
+              </label>
+              <textarea
+                value={formData.requirements}
+                onChange={(e) => setFormData({ ...formData, requirements: e.target.value })}
+                className="w-full bg-[#26272B] text-white rounded-lg p-3 h-24 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent resize-none"
+                placeholder="Any specific requirements, deliverables, or expectations..."
+                maxLength={500}
+              />
+              <p className="text-xs text-gray-500 mt-1">{formData.requirements.length}/500 characters</p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 bg-[#26272B] text-white py-3 px-6 rounded-lg hover:bg-[#333] transition-colors border border-gray-600"
+                disabled={isLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading || !formData.message.trim()}
+                className="flex-1 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 px-6 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    Send Hire Request
+                    <span className="ml-2">🚀</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Hire Request Status Component
+const HireRequestCard: React.FC<{
+  request: HireRequest;
+  onStatusUpdate: (requestId: string, status: HireRequest['status']) => void;
+  isFreelancer: boolean;
+}> = ({ request, onStatusUpdate, isFreelancer }) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const getStatusColor = (status: HireRequest['status']) => {
+    switch (status) {
+      case 'PENDING': return 'text-yellow-400 bg-yellow-400/10';
+      case 'ACCEPTED': return 'text-green-400 bg-green-400/10';
+      case 'DECLINED': return 'text-red-400 bg-red-400/10';
+      case 'COMPLETED': return 'text-blue-400 bg-blue-400/10';
+      case 'CANCELLED': return 'text-gray-400 bg-gray-400/10';
+      default: return 'text-gray-400 bg-gray-400/10';
+    }
+  };
+
+  const getStatusIcon = (status: HireRequest['status']) => {
+    switch (status) {
+      case 'PENDING': return <Clock className="w-4 h-4" />;
+      case 'ACCEPTED': return <CheckCircle className="w-4 h-4" />;
+      case 'DECLINED': return <X className="w-4 h-4" />;
+      case 'COMPLETED': return <Check className="w-4 h-4" />;
+      case 'CANCELLED': return <AlertCircle className="w-4 h-4" />;
+      default: return <Clock className="w-4 h-4" />;
+    }
+  };
+
+  const handleStatusUpdate = async (newStatus: HireRequest['status']) => {
+    setIsLoading(true);
+    try {
+      await onStatusUpdate(request.id, newStatus);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-[#26272B] rounded-lg p-4 border border-[#333]">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="text-white font-semibold">{request.gigTitle}</h3>
+          <p className="text-gray-400 text-sm">
+            {isFreelancer ? `From: ${request.clientName}` : `To: ${request.freelancerName}`}
+          </p>
+        </div>
+        <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs ${getStatusColor(request.status)}`}>
+          {getStatusIcon(request.status)}
+          <span>{request.status}</span>
+        </div>
+      </div>
+
+      <div className="space-y-2 mb-4">
+        <div className="flex items-center space-x-2">
+          <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+          <span className="text-white font-medium">{request.amount} SOL</span>
+        </div>
+
+        {request.deadline && (
+          <p className="text-gray-400 text-sm">
+            Deadline: {new Date(request.deadline).toLocaleDateString()}
+          </p>
+        )}
+
+        <p className="text-gray-300 text-sm">{request.message}</p>
+
+        {request.requirements && (
+          <div className="bg-[#1A1B1E] rounded p-2 mt-2">
+            <p className="text-gray-400 text-xs font-medium mb-1">Requirements:</p>
+            <p className="text-gray-300 text-sm">{request.requirements}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between items-center">
+        <span className="text-gray-500 text-xs">
+          {new Date(request.createdAt).toLocaleDateString()}
+        </span>
+
+        {isFreelancer && request.status === 'PENDING' && (
+          <div className="flex space-x-2">
+            <button
+              onClick={() => handleStatusUpdate('DECLINED')}
+              disabled={isLoading}
+              className="bg-red-500/20 text-red-400 px-3 py-1 rounded text-sm hover:bg-red-500/30 transition-colors disabled:opacity-50"
+            >
+              Decline
+            </button>
+            <button
+              onClick={() => handleStatusUpdate('ACCEPTED')}
+              disabled={isLoading}
+              className="bg-green-500/20 text-green-400 px-3 py-1 rounded text-sm hover:bg-green-500/30 transition-colors disabled:opacity-50"
+            >
+              Accept
+            </button>
+          </div>
+        )}
+
+        {request.status === 'ACCEPTED' && (
+          <button
+            onClick={() => handleStatusUpdate('COMPLETED')}
+            disabled={isLoading}
+            className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded text-sm hover:bg-blue-500/30 transition-colors disabled:opacity-50"
+          >
+            Mark Complete
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // Social media sharing utilities
 // Fixed Social media sharing utilities with better error handling
@@ -138,8 +631,8 @@ const shareToTikTok = (title: string, description: string, url: string) => {
 // Social Share Component
 // Fixed Social Share Component with proper URL handling
 // Fixed Social Share Component with proper URL handling
-const SocialShareButtons: React.FC<{ 
-  gig: Job; 
+const SocialShareButtons: React.FC<{
+  gig: Job;
   showCopyLink?: boolean;
   showForAllUsers?: boolean;
 }> = ({ gig, showCopyLink = true, showForAllUsers = false }) => {
@@ -160,7 +653,7 @@ const SocialShareButtons: React.FC<{
     try {
       // Ensure we have a URL to copy
       const urlToCopy = gigUrl || `${window.location.origin}/marketplace/gig/${gig.id}`;
-      
+
       if (navigator.clipboard && window.isSecureContext) {
         // Use modern clipboard API if available
         await navigator.clipboard.writeText(urlToCopy);
@@ -174,24 +667,24 @@ const SocialShareButtons: React.FC<{
         document.body.appendChild(textArea);
         textArea.focus();
         textArea.select();
-        
+
         const successful = document.execCommand('copy');
         document.body.removeChild(textArea);
-        
+
         if (!successful) {
           throw new Error('Copy command failed');
         }
       }
-      
+
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      
+
       // Optional: Show toast notification
       console.log('Gig link copied successfully:', urlToCopy);
-      
+
     } catch (err) {
       console.error('Failed to copy link:', err);
-      
+
       // Show user-friendly error message
       alert(`Failed to copy link automatically. Please copy this URL manually:\n\n${gigUrl || `${window.location.origin}/marketplace/gig/${gig.id}`}`);
     }
@@ -213,7 +706,7 @@ const SocialShareButtons: React.FC<{
   const shareToInstagram = (title: string, description: string) => {
     try {
       const text = `🚀 Check out this amazing gig: ${title}\n\n${description.substring(0, 150)}${description.length > 150 ? '...' : ''}\n\n💼 Available on our Solana marketplace!\n\n#solana #web3 #freelance #marketplace`;
-      
+
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(text);
       } else {
@@ -225,7 +718,7 @@ const SocialShareButtons: React.FC<{
         document.execCommand('copy');
         document.body.removeChild(textArea);
       }
-      
+
       alert('Content copied to clipboard! You can now paste it in your Instagram post or story.');
     } catch (error) {
       console.error('Error copying to clipboard:', error);
@@ -236,14 +729,14 @@ const SocialShareButtons: React.FC<{
   const shareToTikTok = (title: string, description: string, url: string) => {
     try {
       const text = `🔥 Amazing gig alert: ${title}!\n\n💰 Available on Solana marketplace\n🔗 ${url}\n\n#solana #web3 #freelance #gig`;
-      
+
       // For mobile devices, try to open TikTok
       if (typeof window !== 'undefined' && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
         // Copy to clipboard first
         if (navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(text);
         }
-        
+
         // Try to open TikTok app
         const tiktokUrl = `https://www.tiktok.com/upload`;
         window.open(tiktokUrl, '_blank');
@@ -276,7 +769,7 @@ const SocialShareButtons: React.FC<{
         type="button"
       >
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
+          <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z" />
         </svg>
         <span>Twitter</span>
       </button>
@@ -287,7 +780,7 @@ const SocialShareButtons: React.FC<{
         type="button"
       >
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
         </svg>
         <span>Instagram</span>
       </button>
@@ -298,7 +791,7 @@ const SocialShareButtons: React.FC<{
         type="button"
       >
         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
+          <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" />
         </svg>
         <span>TikTok</span>
       </button>
@@ -316,9 +809,17 @@ const SocialShareButtons: React.FC<{
     </div>
   );
 };
-
+interface GigDetailModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  gig: Job | null;
+  currentUserId?: string;
+  onHireClick: (gig: Job) => void; // Add hire click handler
+}
 // Updated GigDetailModal with always-visible sharing buttons
-const GigDetailModal: React.FC<GigDetailModalProps> = ({ isOpen, onClose, gig, currentUserId }) => {
+const GigDetailModal: React.FC<GigDetailModalProps> = ({ isOpen, onClose, gig, currentUserId, onHireClick }) => {
+  const router = useRouter();
+
   if (!isOpen || !gig) return null;
 
   const isOwner = currentUserId && gig.userId === currentUserId;
@@ -363,11 +864,15 @@ const GigDetailModal: React.FC<GigDetailModalProps> = ({ isOpen, onClose, gig, c
                     </div>
                   </div>
                 </div>
-                <button className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium">
-                  HIRE NOW
-                </button>
+                {!isOwner && (
+                  <button
+                    onClick={() => onHireClick(gig)}
+                    className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium"
+                  >
+                    HIRE NOW
+                  </button>
+                )}
               </div>
-
               {/* Social Sharing - Now shows for everyone */}
               <div className="bg-[#26272B] rounded-lg p-4">
                 <h4 className="text-white font-semibold mb-3">
@@ -375,7 +880,10 @@ const GigDetailModal: React.FC<GigDetailModalProps> = ({ isOpen, onClose, gig, c
                 </h4>
                 <SocialShareButtons gig={gig} showCopyLink={true} showForAllUsers={true} />
               </div>
+
             </div>
+
+
 
             {/* Right Column - Detailed Info */}
             <div>
@@ -435,12 +943,26 @@ const GigDetailModal: React.FC<GigDetailModalProps> = ({ isOpen, onClose, gig, c
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="flex-1 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 px-6 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium">
-                  HIRE NOW
-                </button>
-                <button className="bg-[#26272B] text-white py-3 px-6 rounded-lg hover:bg-[#333] transition-colors border border-gray-600">
-                  Contact Freelancer
-                </button>
+                {!isOwner ? (
+                  <>
+                    <button
+                      onClick={() => onHireClick(gig)}
+                      className="flex-1 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 px-6 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium"
+                    >
+                      HIRE NOW
+                    </button>
+                    <button
+                      onClick={() => router.push(`/inbox?freelancerId=${gig.userId}`)}
+                      className="flex-1 bg-[#26272B] text-white py-3 px-6 rounded-lg hover:bg-[#333] transition-colors border border-gray-600"
+                    >
+                      Contact Freelancer
+                    </button>
+                  </>
+                ) : (
+                  <div className="text-center p-4 bg-[#26272B] rounded-lg">
+                    <p className="text-gray-400">This is your gig</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -490,11 +1012,11 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
             'Content-Type': 'application/json',
           },
         });
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error('Verification check failed:', response.status, errorText);
-          
+
           if (response.status === 404) {
             showToast('error', 'User not found. Please complete your profile setup.');
             setTimeout(() => {
@@ -502,10 +1024,10 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
             }, 2000);
             return;
           }
-          
+
           throw new Error(`HTTP ${response.status}: ${errorText || 'Failed to check verification status'}`);
         }
-        
+
         const data = await response.json();
         if (!data.isVerified) {
           showToast('error', 'Please verify your email before posting a gig');
@@ -608,11 +1130,11 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
       if (!userResponse.ok) {
         const errorText = await userResponse.text();
         console.error('User fetch failed:', userResponse.status, errorText);
-        
+
         if (userResponse.status === 404) {
           throw new Error('User not found. Please register your wallet first.');
         }
-        
+
         throw new Error(`Failed to fetch user: HTTP ${userResponse.status}`);
       }
 
@@ -638,9 +1160,9 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
       const tags = Array.isArray(formData.tags)
         ? formData.tags
         : formData.tags
-            .split(',')
-            .map((tag) => tag.trim())
-            .filter((tag) => tag.length > 0);
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0);
 
       let imageUrl = null;
       if (formData.image) {
@@ -671,14 +1193,14 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Gig creation failed:', response.status, errorText);
-        
+
         let errorData;
         try {
           errorData = JSON.parse(errorText);
         } catch {
           throw new Error(`Failed to create gig: HTTP ${response.status}`);
         }
-        
+
         throw new Error(errorData.error || 'Failed to create gig');
       }
 
@@ -702,10 +1224,10 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
       console.error('Gig creation error:', error);
       setError(error.message);
       showToast('error', error.message);
-      
-      if (error.message.includes('email verification') || 
-          error.message.includes('User not found') ||
-          error.message.includes('register your wallet')) {
+
+      if (error.message.includes('email verification') ||
+        error.message.includes('User not found') ||
+        error.message.includes('register your wallet')) {
         setTimeout(() => {
           router.push('/profile');
         }, 2000);
@@ -722,13 +1244,12 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
       <div className="bg-[#1A1B1E] rounded-lg w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
         {toastAlert && (
           <div
-            className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${
-              toastAlert.type === 'success'
-                ? 'bg-green-500'
-                : toastAlert.type === 'error'
+            className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${toastAlert.type === 'success'
+              ? 'bg-green-500'
+              : toastAlert.type === 'error'
                 ? 'bg-red-500'
                 : 'bg-blue-500'
-            } text-white text-sm font-medium`}
+              } text-white text-sm font-medium`}
           >
             {toastAlert.message}
           </div>
@@ -1157,6 +1678,7 @@ const SearchAndFilters: React.FC<{
   );
 };
 
+
 // Enhanced Pagination Component
 const Pagination: React.FC<{
   currentPage: number;
@@ -1171,7 +1693,7 @@ const Pagination: React.FC<{
   const getPageNumbers = () => {
     const pages = [];
     const maxVisiblePages = 5;
-    
+
     if (totalPages <= maxVisiblePages) {
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
@@ -1199,7 +1721,7 @@ const Pagination: React.FC<{
         pages.push(totalPages);
       }
     }
-    
+
     return pages;
   };
 
@@ -1210,7 +1732,7 @@ const Pagination: React.FC<{
       <div className="text-gray-400 text-sm">
         Showing {startItem}-{endItem} of {totalItems} results
       </div>
-      
+
       <div className="flex items-center space-x-2">
         <button
           onClick={() => onPageChange(currentPage - 1)}
@@ -1220,26 +1742,25 @@ const Pagination: React.FC<{
           <ChevronLeft className="w-4 h-4" />
           <span className="hidden sm:inline">Previous</span>
         </button>
-        
+
         <div className="flex space-x-1">
           {getPageNumbers().map((page, index) => (
             <button
               key={index}
               onClick={() => typeof page === 'number' && onPageChange(page)}
               disabled={page === '...'}
-              className={`w-10 h-10 text-sm rounded-lg transition-colors ${
-                page === currentPage
-                  ? 'bg-[#8B5CF6] text-white'
-                  : page === '...'
+              className={`w-10 h-10 text-sm rounded-lg transition-colors ${page === currentPage
+                ? 'bg-[#8B5CF6] text-white'
+                : page === '...'
                   ? 'text-gray-400 cursor-default'
                   : 'bg-[#26272B] text-white hover:bg-[#333] border border-gray-600'
-              }`}
+                }`}
             >
               {page}
             </button>
           ))}
         </div>
-        
+
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
@@ -1252,6 +1773,7 @@ const Pagination: React.FC<{
     </div>
   );
 };
+
 
 const ZapIcon: React.FC = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1266,12 +1788,24 @@ const StarIcon: React.FC = () => (
 );
 
 // Enhanced JobCard with better mobile responsiveness and gig click functionality
-const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, onGigClick, viewMode, currentUserId }) => {
+const JobCard: React.FC<JobCardProps> = ({
+  job,
+  onProfileClick,
+  onGigClick,
+  onHireClick,
+  onSaveClick,
+  viewMode,
+  currentUserId,
+  savedGigs
+}) => {
+  const isOwnGig = currentUserId && job.userId === currentUserId;
+  const isSaved = savedGigs.has(job.id);
+
   if (viewMode === 'list') {
     return (
       <div className="bg-[#1A1B1E] rounded-lg border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 transition-all duration-300 cursor-pointer group p-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div 
+          <div
             className="relative w-full sm:w-32 h-32 sm:h-24 flex-shrink-0 overflow-hidden rounded-lg cursor-pointer"
             onClick={() => onGigClick(job)}
           >
@@ -1280,11 +1814,8 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, onGigClick, view
               alt={job.title}
               className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
             />
-            <button className="absolute top-2 right-2 p-1 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
-              <img src="/images/bookmark.png" alt="Bookmark" className="w-3 h-3" />
-            </button>
           </div>
-          
+
           <div className="flex-1 min-w-0">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
               <div className="flex-1 min-w-0">
@@ -1299,36 +1830,50 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, onGigClick, view
                   />
                   <span className="text-white text-sm font-medium truncate">{job.freelancer.name}</span>
                 </div>
-                <h3 
+                <h3
                   className="text-white font-semibold text-lg mb-2 group-hover:text-[#8B5CF6] transition-colors line-clamp-1 cursor-pointer"
                   onClick={() => onGigClick(job)}
                 >
                   {job.title}
                 </h3>
                 <p className="text-gray-400 text-sm mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
-                
-                {job.tags && job.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {job.tags.slice(0, 3).map((tag, index) => (
-                      <span key={index} className="bg-[#26272B] text-[#8B5CF6] px-2 py-1 rounded-full text-xs border border-[#333]">
-                        {tag}
-                      </span>
-                    ))}
-                    {job.tags.length > 3 && (
-                      <span className="text-gray-400 text-xs px-2 py-1">+{job.tags.length - 3} more</span>
-                    )}
-                  </div>
-                )}
               </div>
-              
+
               <div className="flex sm:flex-col items-center sm:items-end gap-3 sm:gap-2">
                 <div className="flex items-center space-x-1">
                   <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
                   <span className="text-white text-lg font-medium group-hover:text-[#8B5CF6] transition-colors">{job.price} SOL</span>
                 </div>
-                <button className="bg-[#1E1E1E] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200 whitespace-nowrap">
-                  HIRE NOW
-                </button>
+                <div className="flex gap-2">
+                  {currentUserId && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSaveClick(job);
+                      }}
+                      className={`p-2 rounded-lg transition-all duration-200 ${isSaved
+                          ? 'bg-[#8B5CF6] text-white'
+                          : 'bg-[#26272B] text-gray-400 hover:text-white hover:bg-[#333]'
+                        }`}
+                      title={isSaved ? 'Remove from saved' : 'Save gig'}
+                    >
+                      <svg className="w-4 h-4" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                    </button>
+                  )}
+                  {!isOwnGig && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onHireClick(job);
+                      }}
+                      className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white px-4 py-2 rounded-lg text-sm hover:from-[#7C3AED] hover:to-[#6B2CF5] hover:scale-105 transition-all duration-200 whitespace-nowrap"
+                    >
+                      HIRE NOW
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1337,10 +1882,9 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, onGigClick, view
     );
   }
 
-  // Grid view (enhanced mobile responsiveness)
   return (
     <div className="bg-[#1A1B1E] rounded-lg overflow-hidden border border-[#26272B] hover:shadow-xl hover:shadow-[#8B5CF6]/20 hover:border-[#8B5CF6]/30 hover:scale-[1.02] transition-all duration-300 cursor-pointer group w-full">
-      <div 
+      <div
         className="relative h-40 sm:h-48 overflow-hidden cursor-pointer"
         onClick={() => onGigClick(job)}
       >
@@ -1349,9 +1893,23 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, onGigClick, view
           alt={job.title}
           className="w-full h-full object-contain bg-[#0F1014] group-hover:scale-105 transition-transform duration-300"
         />
-        <button className="absolute top-2 right-2 p-1.5 bg-[#26272B]/80 backdrop-blur-sm rounded hover:bg-[#26272B] transition-colors">
-          <img src="/images/bookmark.png" alt="Bookmark" className="w-3 h-3" />
-        </button>
+        {currentUserId && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSaveClick(job);
+            }}
+            className={`absolute top-2 right-2 p-2 rounded-lg transition-all duration-200 backdrop-blur-sm ${isSaved
+                ? 'bg-[#8B5CF6] text-white shadow-lg'
+                : 'bg-black/50 text-gray-300 hover:text-white hover:bg-black/70'
+              }`}
+            title={isSaved ? 'Remove from saved' : 'Save gig'}
+          >
+            <svg className="w-4 h-4" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+        )}
       </div>
       <div className="p-3 sm:p-4">
         <div
@@ -1365,31 +1923,28 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, onGigClick, view
           />
           <span className="text-white text-xs sm:text-sm font-medium truncate">{job.freelancer.name}</span>
         </div>
-        <h3 
+        <h3
           className="text-white font-semibold text-sm sm:text-base mb-2 line-clamp-2 group-hover:text-[#8B5CF6] transition-colors leading-tight cursor-pointer"
           onClick={() => onGigClick(job)}
         >
           {job.title}
         </h3>
         <p className="text-gray-400 text-xs sm:text-sm mb-3 line-clamp-2 leading-relaxed">{job.description}</p>
-        
-        {job.tags && job.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-3">
-            {job.tags.slice(0, 2).map((tag, index) => (
-              <span key={index} className="bg-[#26272B] text-[#8B5CF6] px-2 py-1 rounded-full text-xs border border-[#333]">
-                {tag}
-              </span>
-            ))}
-            {job.tags.length > 2 && (
-              <span className="text-gray-400 text-xs px-2 py-1">+{job.tags.length - 2}</span>
-            )}
-          </div>
-        )}
-        
+
         <div className="flex justify-between items-center">
-          <button className="bg-[#1E1E1E] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded text-xs sm:text-sm hover:bg-[#8B5CF6] hover:scale-105 transition-all duration-200">
-            HIRE
-          </button>
+          {!isOwnGig ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onHireClick(job);
+              }}
+              className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white px-3 py-1.5 sm:px-4 sm:py-2 rounded text-xs sm:text-sm hover:from-[#7C3AED] hover:to-[#6B2CF5] hover:scale-105 transition-all duration-200"
+            >
+              HIRE
+            </button>
+          ) : (
+            <span className="text-gray-500 text-xs">Your Gig</span>
+          )}
           <div className="flex items-center space-x-1">
             <img src="/images/sol-logo.png" alt="SOL" className="w-3 h-3 sm:w-4 sm:h-4" />
             <span className="text-white text-xs sm:text-sm font-medium group-hover:text-[#8B5CF6] transition-colors">{job.price} SOL</span>
@@ -1399,6 +1954,8 @@ const JobCard: React.FC<JobCardProps> = ({ job, onProfileClick, onGigClick, view
     </div>
   );
 };
+
+
 
 const SearchIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1431,6 +1988,8 @@ interface HeroProps {
 
 const Hero: React.FC<HeroProps> = ({ children }) => {
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [isHireModalOpen, setIsHireModalOpen] = useState(false);
+  const [selectedGigForHire, setSelectedGigForHire] = useState<Job | null>(null);
   const [isPostGigModalOpen, setIsPostGigModalOpen] = useState(false);
   const [isFreelancerModalOpen, setIsFreelancerModalOpen] = useState(false);
   const [isGigDetailModalOpen, setIsGigDetailModalOpen] = useState(false);
@@ -1443,6 +2002,8 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(12);
+  const [savedGigs, setSavedGigs] = useState<Set<string>>(new Set());
+  const [isSaving, setIsSaving] = useState<Set<string>>(new Set());
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const [filters, setFilters] = useState<SearchFilters>({
     query: '',
@@ -1462,6 +2023,18 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
     { title: 'SOLEER HOME', href: 'https://www.soleer.xyz' },
     { title: 'FAQ', href: 'https://www.soleer.xyz/faq' },
   ];
+  const handleHireClick = useCallback((gig: Job) => {
+    if (!connected) {
+      setIsWalletModalOpen(true);
+      return;
+    }
+    setSelectedGigForHire(gig);
+    setIsHireModalOpen(true);
+  }, [connected]);
+  const handleHireSuccess = useCallback(() => {
+    // Refresh gigs or show success message
+    // You might want to refresh the gigs list here
+  }, []);
 
   // Get current user ID when wallet is connected
   useEffect(() => {
@@ -1493,6 +2066,159 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
 
     getCurrentUser();
   }, [connected, publicKey]);
+
+  // Fetch saved gigs when user is connected
+  useEffect(() => {
+    const fetchSavedGigs = async () => {
+      if (!connected || !publicKey || !currentUserId) {
+        setSavedGigs(new Set());
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/saved-gigs', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicKey.toString()}`
+          },
+        });
+
+        if (response.ok) {
+          const savedGigsData = await response.json();
+          const savedGigIds = new Set<string>(savedGigsData.map((saved: SavedGig) => saved.gigId));
+          setSavedGigs(savedGigIds);
+        }
+      } catch (error) {
+        console.error('Error fetching saved gigs:', error);
+      }
+    };
+
+    fetchSavedGigs();
+  }, [connected, publicKey, currentUserId]);
+
+  // Handle save/unsave gig
+  const handleSaveGig = useCallback(async (gig: Job) => {
+    console.log('Save gig clicked:', {
+      gigId: gig.id,
+      connected,
+      publicKey: publicKey?.toString(),
+      currentUserId,
+      isSaving: isSaving.has(gig.id)
+    });
+
+    if (!connected || !publicKey || !currentUserId) {
+      console.log('Missing required data for saving');
+      setIsWalletModalOpen(true);
+      return;
+    }
+
+    if (isSaving.has(gig.id)) {
+      console.log('Already saving this gig, skipping');
+      return;
+    }
+
+    setIsSaving(prev => new Set(prev).add(gig.id));
+
+    try {
+      const isSaved = savedGigs.has(gig.id);
+      console.log('Is gig currently saved?', isSaved);
+
+      if (isSaved) {
+        // Find the saved gig record to delete
+        console.log('Fetching saved gigs to find record to delete');
+        const response = await fetch('/api/saved-gigs', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicKey.toString()}`
+          },
+        });
+
+        console.log('Fetch saved gigs response status:', response.status);
+
+        if (response.ok) {
+          const savedGigsData = await response.json();
+          console.log('Saved gigs data:', savedGigsData);
+          const savedGigRecord = savedGigsData.find((saved: SavedGig) => saved.gigId === gig.id);
+
+          if (savedGigRecord) {
+            console.log('Found saved gig record to delete:', savedGigRecord.id);
+            const deleteResponse = await fetch(`/api/saved-gigs/${savedGigRecord.id}`, {
+              method: 'DELETE',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${publicKey.toString()}`
+              },
+            });
+
+            console.log('Delete response status:', deleteResponse.status);
+
+            if (deleteResponse.ok) {
+              setSavedGigs(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(gig.id);
+                console.log('Removed gig from saved set');
+                return newSet;
+              });
+              // Show success message
+              console.log('Gig unsaved successfully');
+            } else {
+              const errorText = await deleteResponse.text();
+              console.error('Failed to delete saved gig:', errorText);
+            }
+          } else {
+            console.log('Saved gig record not found');
+          }
+        } else {
+          const errorText = await response.text();
+          console.error('Failed to fetch saved gigs:', errorText);
+        }
+      } else {
+        // Save the gig
+        console.log('Saving gig:', { gigId: gig.id, userId: currentUserId });
+        const response = await fetch('/api/saved-gigs', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicKey.toString()}`
+          },
+          body: JSON.stringify({
+            gigId: gig.id,
+            userId: currentUserId
+          }),
+        });
+
+        console.log('Save gig response status:', response.status);
+
+        if (response.ok) {
+          const savedGigData = await response.json();
+          console.log('Saved gig data:', savedGigData);
+          setSavedGigs(prev => new Set(prev).add(gig.id));
+          console.log('Gig saved successfully');
+        } else {
+          const errorText = await response.text();
+          console.error('Failed to save gig:', response.status, errorText);
+
+          try {
+            const errorData = JSON.parse(errorText);
+            console.error('Error details:', errorData);
+          } catch {
+            console.error('Raw error response:', errorText);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error saving/unsaving gig:', error);
+    } finally {
+      setIsSaving(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gig.id);
+        return newSet;
+      });
+    }
+  }, [connected, publicKey, currentUserId, savedGigs, isSaving]);
+
 
   const handleOpenPostGigModal = async () => {
     if (!connected) {
@@ -1631,6 +2357,15 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
           backgroundBlendMode: 'overlay',
         }}
       />
+      <HireModal
+        isOpen={isHireModalOpen}
+        onClose={() => setIsHireModalOpen(false)}
+        gig={selectedGigForHire}
+        currentUserId={currentUserId}
+        onHireSuccess={handleHireSuccess}
+      />
+
+
       <div className="relative z-50">
         <Navbar navItems={navItems} title="" description="" />
       </div>
@@ -1703,8 +2438,11 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
                   job={gig}
                   onProfileClick={handleProfileClick}
                   onGigClick={handleGigClick}
+                  onHireClick={handleHireClick}
+                  onSaveClick={handleSaveGig}
                   viewMode={viewMode}
                   currentUserId={currentUserId}
+                  savedGigs={savedGigs}
                 />
               ))}
             </div>
@@ -1722,7 +2460,7 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
 
         {children}
       </main>
-      
+
       {/* Modals */}
       <WalletConnectionModal isOpen={isWalletModalOpen} onClose={() => setIsWalletModalOpen(false)} />
       <PostGigModal isOpen={isPostGigModalOpen} onClose={() => setIsPostGigModalOpen(false)} />
@@ -1736,7 +2474,17 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
         onClose={() => setIsGigDetailModalOpen(false)}
         gig={selectedGig}
         currentUserId={currentUserId}
+        onHireClick={handleHireClick}
       />
+
+      <HireModal
+        isOpen={isHireModalOpen}
+        onClose={() => setIsHireModalOpen(false)}
+        gig={selectedGigForHire}
+        currentUserId={currentUserId}
+        onHireSuccess={handleHireSuccess}
+      />
+
     </div>
   );
 };
