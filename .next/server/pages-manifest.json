@@ -2,12 +2,10 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/inbox": "pages/inbox.js",
-  "/api/user/[walletAddress]": "pages/api/user/[walletAddress].js",
-  "/api/conversations": "pages/api/conversations.js",
-  "/api/freelancers-with-gigs": "pages/api/freelancers-with-gigs.js",
   "/api/gigs": "pages/api/gigs.js",
   "/api/users": "pages/api/users.js",
   "/api/saved-gigs": "pages/api/saved-gigs.js",
-  "/api/profile/check-email": "pages/api/profile/check-email.js"
+  "/api/transactions": "pages/api/transactions.js",
+  "/api/dashboard/stats": "pages/api/dashboard/stats.js",
+  "/dashboard": "pages/dashboard.js"
 }

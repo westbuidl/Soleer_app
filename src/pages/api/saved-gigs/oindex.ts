@@ -33,9 +33,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const savedGigs = await prisma.savedGig.findMany({
         where: { userId: user.id },
         include: {
-          Gig: {
+          gig: {  // Changed from 'Gig' to 'gig' (lowercase)
             include: {
-              User: true
+              user: true  // Changed from 'User' to 'user' (lowercase)
             }
           }
         },
@@ -46,7 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(200).json(savedGigs);
     } catch (error) {
       console.error('Error fetching saved gigs:', error);
-      res.status(500).json({ error: 'Internal server error', details: error.message });
+      // Fix for TypeScript error: explicitly type the error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      res.status(500).json({ error: 'Internal server error', details: errorMessage });
     } finally {
       await prisma.$disconnect();
     }
@@ -113,9 +115,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           gigId
         },
         include: {
-          Gig: {
+          gig: {  // Changed from 'Gig' to 'gig' (lowercase)
             include: {
-              User: true
+              user: true  // Changed from 'User' to 'user' (lowercase)
             }
           }
         }
@@ -125,7 +127,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       res.status(201).json(savedGig);
     } catch (error) {
       console.error('Error saving gig:', error);
-      res.status(500).json({ error: 'Internal server error', details: error.message });
+      // Fix for TypeScript error: explicitly type the error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      res.status(500).json({ error: 'Internal server error', details: errorMessage });
     } finally {
       await prisma.$disconnect();
     }

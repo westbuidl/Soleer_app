@@ -4,7 +4,7 @@ import Footer from "@/components/sections/Footer";
 import Navbar from './Navbar';
 //import { useRouter } from 'next/router';
 import "@/app/globals.css";
-import { Plus, UploadCloud, X, Loader2, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight, Grid3x3, List, Share2, Copy, Check, ExternalLink, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, UploadCloud, X, Loader2, Search, Filter, SlidersHorizontal, ChevronLeft, ChevronRight, Grid3x3, List, Share2, Copy, Check, ExternalLink, Clock, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useRouter } from 'next/navigation';
 
@@ -172,6 +172,8 @@ const HireModal: React.FC<HireModalProps> = ({ isOpen, onClose, gig, currentUser
       setError('');
     }
   }, [isOpen, gig]);
+
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -469,6 +471,8 @@ const HireModal: React.FC<HireModalProps> = ({ isOpen, onClose, gig, currentUser
     </div>
   );
 };
+
+
 
 // Hire Request Status Component
 const HireRequestCard: React.FC<{
@@ -1046,6 +1050,8 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
       checkVerification();
     }
   }, [publicKey, connected, router, isOpen]);
+
+  
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2004,6 +2010,7 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
   const [itemsPerPage] = useState(12);
   const [savedGigs, setSavedGigs] = useState<Set<string>>(new Set());
   const [isSaving, setIsSaving] = useState<Set<string>>(new Set());
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const [filters, setFilters] = useState<SearchFilters>({
     query: '',
@@ -2096,6 +2103,8 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
 
     fetchSavedGigs();
   }, [connected, publicKey, currentUserId]);
+
+  
 
   // Handle save/unsave gig
   const handleSaveGig = useCallback(async (gig: Job) => {
@@ -2219,6 +2228,42 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
     }
   }, [connected, publicKey, currentUserId, savedGigs, isSaving]);
 
+  const handleRefreshGigs = useCallback(async () => {
+    setIsRefreshing(true);
+    setError('');
+  
+    try {
+      const response = await fetch('/api/gigs', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          // Add cache-busting parameter
+          'Cache-Control': 'no-cache',
+        },
+      });
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to refresh gigs:', response.status, errorText);
+        throw new Error(`Failed to refresh gigs: HTTP ${response.status}`);
+      }
+  
+      const data = await response.json();
+      console.log('Gigs refreshed successfully:', data);
+      setAllGigs(data);
+      setCurrentPage(1); // Reset to first page after refresh
+      
+      // Show success toast (optional)
+      // showToast('success', 'Gigs refreshed successfully!');
+      
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Failed to refresh gigs';
+      console.error('Gig refresh error:', err);
+      setError(error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
   const handleOpenPostGigModal = async () => {
     if (!connected) {
@@ -2343,6 +2388,62 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
     setCurrentPage(1); // Reset to first page when filters change
   }, [allGigs, filters]);
 
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Refresh when user comes back to the tab
+        handleRefreshGigs();
+        
+        // Set up auto-refresh interval
+        intervalId = setInterval(() => {
+          if (!isRefreshing && !isLoading) {
+            handleRefreshGigs();
+          }
+        }, 30000); // Refresh every 30 seconds
+      } else {
+        // Clear interval when tab is not visible
+        if (intervalId) {
+          clearInterval(intervalId);
+        }
+      }
+    };
+  
+    // Set up initial auto-refresh
+    intervalId = setInterval(() => {
+      if (!isRefreshing && !isLoading && document.visibilityState === 'visible') {
+        handleRefreshGigs();
+      }
+    }, 30000);
+  
+    // Listen for visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [handleRefreshGigs, isRefreshing, isLoading]);
+  
+  // 6. Optional: Add keyboard shortcut for refresh (add this useEffect)
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      // Ctrl+R or F5 for refresh (prevent default browser refresh)
+      if ((event.ctrlKey && event.key === 'r') || event.key === 'F5') {
+        event.preventDefault();
+        handleRefreshGigs();
+      }
+    };
+  
+    document.addEventListener('keydown', handleKeyPress);
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [handleRefreshGigs]);
+
   // Calculate pagination
   const totalPages = Math.ceil(filteredGigs.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -2370,21 +2471,34 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
         <Navbar navItems={navItems} title="" description="" />
       </div>
       <main className="px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-7xl mx-auto relative">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-bold">Marketplace</h1>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-sm text-gray-400">Build {MARKETPLACE_VERSION}</span>
-            </div>
-          </div>
-          <button
-            onClick={handleOpenPostGigModal}
-            className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-2 px-4 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Post a Gig</span>
-          </button>
-        </div>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+  <div>
+    <h1 className="text-3xl sm:text-4xl font-bold">Marketplace</h1>
+    <div className="flex items-center gap-2 mt-2">
+      <span className="text-sm text-gray-400">Build {MARKETPLACE_VERSION}</span>
+      <span className="text-gray-600">•</span>
+      <span className="text-sm text-gray-400">{filteredGigs.length} gigs available</span>
+    </div>
+  </div>
+  <div className="flex items-center gap-3">
+    <button
+      onClick={handleRefreshGigs}
+      disabled={isRefreshing || isLoading}
+      className="flex items-center space-x-2 bg-[#26272B] text-white px-4 py-2 rounded-lg hover:bg-[#333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-gray-600"
+      title="Refresh gigs"
+    >
+      <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+      <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+    </button>
+    <button
+      onClick={handleOpenPostGigModal}
+      className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-2 px-4 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 flex items-center space-x-2"
+    >
+      <Plus className="w-4 h-4" />
+      <span>Post a Gig</span>
+    </button>
+  </div>
+</div>
 
         {/* Search and Filters */}
         <SearchAndFilters
