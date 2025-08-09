@@ -1,1 +1,10 @@
-{}
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/profile": "pages/profile.js",
+  "/inbox": "pages/inbox.js",
+  "/api/user/[walletAddress]": "pages/api/user/[walletAddress].js",
+  "/api/conversations": "pages/api/conversations.js",
+  "/api/freelancers-with-gigs": "pages/api/freelancers-with-gigs.js"
+}
