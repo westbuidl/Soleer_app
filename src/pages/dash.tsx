@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Footer from "@/components/sections/Footer";
 import Navbar from "@/components/common/Navbar";
 import { ChevronLeft, ChevronRight, ChevronDown, Loader2, Edit3, Pause, Play, Trash2, UploadCloud, X } from 'lucide-react';
-import "../olapp/globals.css";
+import "../app/globals.css";
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useRouter } from 'next/router';
