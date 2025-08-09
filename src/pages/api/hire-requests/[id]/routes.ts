@@ -1,10 +1,13 @@
-// /app/api/hire-requests/[id]/route.js
+// /app/api/hire-requests/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export async function PATCH(req, { params }) {
+export async function PATCH(
+  req: NextRequest, 
+  { params }: { params: { id: string } }
+) {
   try {
     console.log('PATCH /api/hire-requests/[id] - Starting request processing');
     console.log('Params:', params);
@@ -109,10 +112,11 @@ export async function PATCH(req, { params }) {
       message: 'Hire request updated successfully',
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error updating hire request:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to update hire request';
     return NextResponse.json(
-      { error: error.message || 'Failed to update hire request' },
+      { error: errorMessage },
       { status: 500 }
     );
   } finally {
@@ -120,7 +124,10 @@ export async function PATCH(req, { params }) {
   }
 }
 
-export async function GET(req, { params }) {
+export async function GET(
+  req: NextRequest, 
+  { params }: { params: { id: string } }
+) {
   try {
     console.log('GET /api/hire-requests/[id] - Starting request processing');
     console.log('Params:', params);
@@ -190,10 +197,11 @@ export async function GET(req, { params }) {
 
     return NextResponse.json(transformedHire);
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error fetching hire request:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch hire request';
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch hire request' },
+      { error: errorMessage },
       { status: 500 }
     );
   } finally {

@@ -1,4 +1,4 @@
-/*import { NextApiRequest, NextApiResponse } from 'next';
+import { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
 import { PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { clusterApiUrl, Connection } from '@solana/web3.js';
@@ -97,6 +97,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             ],
           },
         },
+        include: { participants: true }, // Include participants when creating
       });
 
       // Send initial message
@@ -105,7 +106,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           content: `Hire request for gig: ${gig.title}`,
           senderId: client.id,
           receiverId: gig.userId,
-          conversationId:  conversation,
+          conversationId: conversation.id, // Use conversation.id instead of conversation
         },
       });
     } else {
@@ -123,7 +124,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({
       hireId: hire.id,
       transaction: transactionBase64,
-      conversationId: conversation,
+      conversationId: conversation.id, // Return just the ID, or return the full conversation object
     });
   } catch (error: any) {
     console.error('Error creating hire:', error);
@@ -131,4 +132,4 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } finally {
     await prisma.$disconnect();
   }
-}*/
+}
