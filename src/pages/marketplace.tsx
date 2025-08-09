@@ -460,11 +460,9 @@ const MarketplaceSection: React.FC = () => {
       
       
       <Footer />
-      {isModalOpen && (
-  <ComingSoonModal 
-    isOpen={isModalOpen}
-  />
-)}
+      
+
+
      
     </div>
   );

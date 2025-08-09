@@ -30,11 +30,7 @@ import {
 } from '@solana/wallet-adapter-wallets';
 import { 
   TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-  getAccount,
-  TokenAccountNotFoundError,
-  TokenInvalidAccountOwnerError
+  
 } from '@solana/spl-token';
 
 // Jupiter API endpoints
