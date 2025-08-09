@@ -50,26 +50,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Cannot hire yourself' });
     }
 
-    // Create order
-    const order = await prisma.order.create({
+    // Create hire record (changed from order to hire)
+    const hire = await prisma.hire.create({
       data: {
         gigId,
-        buyerId: buyer.id,
+        clientId: buyer.id, // Changed from buyerId to clientId to match your schema
         freelancerId,
         amount,
         status: 'PENDING',
       },
       include: {
         gig: true,
-        buyer: true,
+        client: true, // Changed from buyer to client
         freelancer: true,
       },
     });
 
-    res.status(201).json(order);
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ error: 'Failed to create order' });
+    res.status(201).json(hire);
+  } catch (error: unknown) {
+    console.error('Error creating hire:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create hire';
+    res.status(500).json({ error: errorMessage });
   } finally {
     await prisma.$disconnect();
   }
