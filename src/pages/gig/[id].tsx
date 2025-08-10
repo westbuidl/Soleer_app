@@ -1,3 +1,4 @@
+// pages/gig/[id].tsx
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { GetServerSideProps } from 'next';
@@ -32,6 +33,7 @@ interface Job {
 interface GigPageProps {
   gig: Job | null;
   error?: string;
+  debug?: any; // Add debug info for troubleshooting
 }
 
 const SocialShareButtons: React.FC<{ gig: Job }> = ({ gig }) => {
@@ -66,15 +68,32 @@ const SocialShareButtons: React.FC<{ gig: Job }> = ({ gig }) => {
   );
 };
 
-const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
+const GigPage: React.FC<GigPageProps> = ({ gig, error, debug }) => {
   const router = useRouter();
   const endpoint = clusterApiUrl('devnet');
   const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
 
   // Debug logs
   useEffect(() => {
-    console.log('GigPage props:', { gig, error });
-  }, [gig, error]);
+    console.log('GigPage Component Props:', { 
+      gig: gig ? { ...gig, description: gig.description?.substring(0, 100) + '...' } : null, 
+      error, 
+      debug,
+      routerId: router.query.id 
+    });
+  }, [gig, error, debug, router.query.id]);
+
+  // Show loading state if router is not ready
+  if (router.isFallback || (!gig && !error)) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0B] text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8B5CF6] mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading gig details...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (error || !gig) {
     return (
@@ -99,6 +118,17 @@ const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
                   <p className="text-gray-400 mb-6">
                     The gig you're looking for doesn't exist or has been removed.
                   </p>
+                  
+                  {/* Debug info for development */}
+                  {process.env.NODE_ENV === 'development' && debug && (
+                    <div className="bg-red-900/20 border border-red-500 rounded-lg p-4 mb-6 text-left max-w-2xl mx-auto">
+                      <h3 className="text-red-400 font-semibold mb-2">Debug Info:</h3>
+                      <pre className="text-xs text-gray-300 whitespace-pre-wrap">
+                        {JSON.stringify(debug, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  
                   <div className="flex gap-4 justify-center">
                     <button
                       onClick={() => router.back()}
@@ -168,7 +198,7 @@ const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
                     <img
                       src={gig.image}
                       alt={gig.title}
-                      className="w-full h-full object-contain bg-[#1A1B1E]"
+                      className="w-full h-full object-cover bg-[#1A1B1E]"
                       onError={(e) => {
                         e.currentTarget.src = '/images/default-gig.jpg';
                       }}
@@ -181,7 +211,7 @@ const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
                       <img
                         src={gig.freelancer.avatar}
                         alt={gig.freelancer.name}
-                        className="w-16 h-16 rounded-full border-2 border-[#8B5CF6]"
+                        className="w-16 h-16 rounded-full border-2 border-[#8B5CF6] object-cover"
                         onError={(e) => {
                           e.currentTarget.src = '/images/default-avatar.png';
                         }}
@@ -212,9 +242,11 @@ const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
                 {/* Right Column - Details */}
                 <div>
                   <div className="flex justify-between items-start mb-4">
-                    <h1 className="text-3xl font-bold text-white">{gig.title}</h1>
-                    <div className="flex items-center space-x-2 bg-[#1A1B1E] px-4 py-2 rounded-lg border border-[#26272B]">
-                      <img src="/images/sol-logo.png" alt="SOL" className="w-6 h-6" />
+                    <h1 className="text-3xl font-bold text-white flex-1 mr-4">{gig.title}</h1>
+                    <div className="flex items-center space-x-2 bg-[#1A1B1E] px-4 py-2 rounded-lg border border-[#26272B] shrink-0">
+                      <div className="w-6 h-6 bg-gradient-to-r from-purple-400 to-purple-600 rounded-full flex items-center justify-center">
+                        <span className="text-xs font-bold text-white">S</span>
+                      </div>
                       <span className="text-2xl font-bold text-white">{gig.price} SOL</span>
                     </div>
                   </div>
@@ -273,10 +305,7 @@ const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
                       <button className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-4 px-6 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all font-medium text-lg">
                         HIRE {gig.freelancer.name.split(' ')[0].toUpperCase()}
                       </button>
-                      <button
-                        onClick={() => router.push(`/inbox?freelancerId=${gig.userId}`)}
-                        className="w-full bg-[#26272B] text-white py-3 px-6 rounded-lg hover:bg-[#333] transition-colors border border-gray-600"
-                      >
+                      <button className="w-full bg-[#26272B] text-white py-3 px-6 rounded-lg hover:bg-[#333] transition-colors border border-gray-600">
                         Contact Freelancer
                       </button>
                     </div>
@@ -289,83 +318,215 @@ const GigPage: React.FC<GigPageProps> = ({ gig, error }) => {
           </div>
         </WalletModalProvider>
       </WalletProvider>
-      </ConnectionProvider>
+    </ConnectionProvider>
   );
 };
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { id } = context.params!;
+  const debugInfo: any = {
+    gigId: id,
+    timestamp: new Date().toISOString(),
+    nodeEnv: process.env.NODE_ENV,
+  };
 
-  console.log('getServerSideProps - Fetching gig with ID:', id);
+  console.log('=== getServerSideProps START ===');
+  console.log('Gig ID:', id);
+  console.log('Request headers:', context.req.headers);
 
   try {
-    // Determine the base URL - try multiple approaches
+    // More robust base URL determination
     let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
     
     if (!baseUrl) {
-      // Fallback to building URL from request headers
-      const protocol = context.req.headers['x-forwarded-proto'] || 'http';
+      const protocol = context.req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
       const host = context.req.headers.host;
       baseUrl = `${protocol}://${host}`;
     }
     
-    if (!baseUrl) {
+    // Fallback for development
+    if (!baseUrl || baseUrl.includes('undefined')) {
       baseUrl = 'http://localhost:3000';
     }
 
+    debugInfo.baseUrl = baseUrl;
     console.log('Using base URL:', baseUrl);
 
     const apiUrl = `${baseUrl}/api/gigs/${id}`;
-    console.log('Fetching from:', apiUrl);
+    console.log('Fetching from API:', apiUrl);
+    debugInfo.apiUrl = apiUrl;
 
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-      // Add timeout
-      signal: AbortSignal.timeout(10000), // 10 second timeout
-    });
+    // Try direct database query first (bypassing API)
+    const { PrismaClient } = require('@prisma/client');
+    const prisma = new PrismaClient();
 
-    console.log('Response status:', response.status);
+    try {
+      console.log('Attempting direct database query...');
+      
+      const gig = await prisma.gig.findUnique({
+        where: { 
+          id: String(id),
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          image: true,
+          amount: true,
+          status: true,
+          category: true,
+          tags: true,
+          createdAt: true,
+          userId: true,
+          user: {
+            select: {
+              name: true,
+              profileImage: true,
+              jobProfile: {
+                select: { 
+                  skills: true 
+                },
+              },
+            },
+          },
+        },
+      });
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.log('Gig not found:', id);
+      await prisma.$disconnect();
+
+      if (!gig) {
+        console.log('Gig not found in database:', id);
+        debugInfo.dbResult = 'not_found';
         return {
           props: {
             gig: null,
-            error: 'Gig not found'
+            error: 'Gig not found',
+            debug: debugInfo
           }
         };
       }
+
+      console.log('Found gig in database:', gig.id, gig.status);
+      debugInfo.dbResult = 'found';
+      debugInfo.gigStatus = gig.status;
+
+      // Check if gig is active
+      if (gig.status !== 'ACTIVE') {
+        console.log('Gig is not active:', gig.status);
+        debugInfo.error = 'gig_not_active';
+        return {
+          props: {
+            gig: null,
+            error: 'This gig is not currently available',
+            debug: debugInfo
+          }
+        };
+      }
+
+      // Format the response
+      const formattedGig = {
+        id: gig.id,
+        image: gig.image || '/images/default-gig.jpg',
+        title: gig.title,
+        description: gig.description,
+        price: Number(gig.amount),
+        category: gig.category,
+        tags: gig.tags || [],
+        createdAt: gig.createdAt?.toISOString(),
+        userId: gig.userId,
+        freelancer: {
+          name: gig.user?.name || 'Anonymous',
+          avatar: gig.user?.profileImage || '/images/default-avatar.png',
+          skills: gig.user?.jobProfile?.skills || [],
+        },
+      };
+
+      console.log('Successfully formatted gig data');
+      debugInfo.success = true;
+
+      return {
+        props: {
+          gig: formattedGig,
+          debug: debugInfo
+        }
+      };
+
+    } catch (dbError) {
+      console.error('Database query failed:', dbError);
+      debugInfo.dbError = dbError instanceof Error ? dbError.message : 'Unknown db error';
       
-      const errorText = await response.text();
-      console.error('API Error Response:', errorText);
-      throw new Error(`API responded with status ${response.status}: ${errorText}`);
+      // Fallback to API call if direct DB query fails
+      console.log('Falling back to API call...');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      try {
+        const response = await fetch(apiUrl, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        debugInfo.apiStatus = response.status;
+        console.log('API Response status:', response.status);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          debugInfo.apiError = errorText;
+          
+          if (response.status === 404) {
+            return {
+              props: {
+                gig: null,
+                error: 'Gig not found',
+                debug: debugInfo
+              }
+            };
+          }
+          
+          throw new Error(`API Error: ${response.status} - ${errorText}`);
+        }
+
+        const gig = await response.json();
+        debugInfo.apiSuccess = true;
+        console.log('Successfully fetched from API:', gig.id);
+
+        return {
+          props: {
+            gig,
+            debug: debugInfo
+          }
+        };
+
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        debugInfo.fetchError = fetchError instanceof Error ? fetchError.message : 'Unknown fetch error';
+        throw fetchError;
+      }
     }
 
-    const gig = await response.json();
-    console.log('Successfully fetched gig:', gig.id);
-
-    return {
-      props: {
-        gig
-      }
-    };
   } catch (error) {
-    console.error('Error in getServerSideProps:', {
-      gigId: id,
-      error: error instanceof Error ? error.message : 'Unknown error',
+    console.error('=== getServerSideProps ERROR ===');
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
     });
-    
+
+    debugInfo.finalError = error instanceof Error ? error.message : 'Unknown error';
+
     return {
       props: {
         gig: null,
-        error: `Failed to load gig: ${error instanceof Error ? error.message : 'Unknown error'}`
+        error: `Failed to load gig: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        debug: debugInfo
       }
     };
+  } finally {
+    console.log('=== getServerSideProps END ===');
   }
 };
 

@@ -29,7 +29,7 @@ import router from 'next/router';
 require('@solana/wallet-adapter-react-ui/styles.css');
 
 // Version number for the marketplace
-const MARKETPLACE_VERSION = "v2.1.0";
+const MARKETPLACE_VERSION = "v2.2.1";
 
 // Define Toast types
 type ToastType = 'success' | 'error' | 'info';
@@ -2476,7 +2476,7 @@ const Hero: React.FC<HeroProps> = ({ children }) => {
     <h1 className="text-3xl sm:text-4xl font-bold">Marketplace</h1>
     <div className="flex items-center gap-2 mt-2">
       <span className="text-sm text-gray-400">Build {MARKETPLACE_VERSION}</span>
-      <span className="text-gray-600">•</span>
+      <span className="text-green-600">•</span>
       <span className="text-sm text-gray-400">{filteredGigs.length} gigs available</span>
     </div>
   </div>
