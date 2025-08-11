@@ -28,7 +28,7 @@ const Footer: React.FC<FooterProps> = ({ className }) => {
                 alt="Soleer Logo"
                 width={120}
                 height={40}
-                className="object-contain w-24 sm:w-28 md:w-32"
+                className="object-contain w-14 sm:w-18 md:w-12"
               />
               </a>
             </div>

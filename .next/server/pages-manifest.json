@@ -2,8 +2,8 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/gig/[id]": "pages/gig/[id].js",
   "/api/gigs": "pages/api/gigs.js",
+  "/api/users": "pages/api/users.js",
   "/api/saved-gigs": "pages/api/saved-gigs.js",
-  "/api/users": "pages/api/users.js"
+  "/gig/[id]": "pages/gig/[id].js"
 }
