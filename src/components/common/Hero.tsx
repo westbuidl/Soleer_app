@@ -58,6 +58,25 @@ interface Job {
   userId?: string; // Added to identify gig owner
 }
 
+interface Freelancer {
+  id: string; // Maps to User.id
+  name: string;
+  avatar: string;
+  skills?: string[];
+  website?: string;
+  twitter?: string;
+  discord?: string;
+  bio?: string;
+  hourlyRate?: number; // Optional, as not directly in User model but may be derived
+}
+
+interface JobProfile {
+  title?: string;
+  skills?: string[];
+  description?: string;
+  hourlyRate?: number;
+}
+
 interface FreelancerProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -1429,7 +1448,81 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
 };
 
 const FreelancerProfileModal: React.FC<FreelancerProfileModalProps> = ({ isOpen, onClose, freelancer }) => {
+  const [profileData, setProfileData] = useState<Freelancer | null>(null);
+  const [jobProfile, setJobProfile] = useState<JobProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchFreelancerProfile = async () => {
+      if (!freelancer?.id) return;
+
+      setIsLoading(true);
+      setError('');
+
+      try {
+        // Fetch user data using freelancer.id (maps to User.id)
+        const response = await fetch(`/api/users?userId=${encodeURIComponent(freelancer.id)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to fetch freelancer profile: ${errorText || response.status}`);
+        }
+
+        const userData = await response.json();
+
+        // Fetch job profile to get skills and additional details
+        let jobProfileData: JobProfile | null = null;
+        try {
+          const jobProfileResponse = await fetch(`/api/job-profiles?userId=${encodeURIComponent(freelancer.id)}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (jobProfileResponse.ok) {
+            jobProfileData = await jobProfileResponse.json();
+            setJobProfile(jobProfileData);
+          }
+        } catch (jobProfileError) {
+          console.warn('Failed to fetch job profile:', jobProfileError);
+          // Continue without job profile if it fails
+        }
+
+        setProfileData({
+          id: userData.id,
+          name: userData.name || freelancer.name || 'Unnamed Freelancer',
+          avatar: userData.profileImage || freelancer.avatar || '/images/default-avatar.png',
+          skills: jobProfileData?.skills || userData.skills || [],
+          website: userData.website,
+          twitter: userData.twitter,
+          discord: userData.discord,
+          bio: userData.bio || jobProfileData?.description,
+          hourlyRate: jobProfileData?.hourlyRate,
+        });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load freelancer profile';
+        setError(errorMessage);
+        setProfileData(freelancer); // Fallback to passed freelancer data
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (isOpen && freelancer?.id) {
+      fetchFreelancerProfile();
+    }
+  }, [isOpen, freelancer]);
+
   if (!isOpen || !freelancer) return null;
+
+  const displayData = profileData || freelancer;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
@@ -1442,80 +1535,129 @@ const FreelancerProfileModal: React.FC<FreelancerProfileModalProps> = ({ isOpen,
         </button>
 
         <div className="p-5">
-          {/* Header Section */}
-          <div className="text-center mb-4">
-            <img
-              src={freelancer.avatar}
-              alt={freelancer.name}
-              className="w-16 h-16 rounded-full mx-auto mb-3 border-2 border-[#8B5CF6]"
-            />
-            <h3 className="text-white font-bold text-lg">{freelancer.name}</h3>
-            <div className="flex justify-center text-yellow-400 text-sm mb-2">
-              {'★'.repeat(5)}
+          {isLoading ? (
+            <div className="text-center py-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-[#8B5CF6] mx-auto"></div>
+              <p className="text-gray-400 mt-2">Loading profile...</p>
             </div>
-            <p className="text-[#8B5CF6] font-semibold text-sm">UI/UX DESIGNER</p>
-          </div>
-
-          {/* Action Section */}
-          <div className="flex items-center justify-between mb-4 p-3 bg-[#26272B] rounded-lg">
-            <button className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white px-4 py-2 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all text-sm font-medium">
-              HIRE NOW
-            </button>
-            <div className="text-right">
-              <div className="flex items-center space-x-2 mb-1">
-                <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
-                <span className="text-white font-medium">8 SOL</span>
+          ) : error ? (
+            <Alert className="mb-4 bg-red-500/10 border-red-500/20">
+              <AlertDescription className="text-red-400">{error}</AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              {/* Header Section */}
+              <div className="text-center mb-4">
+                <img
+                  src={displayData.avatar}
+                  alt={displayData.name}
+                  className="w-16 h-16 rounded-full mx-auto mb-3 border-2 border-[#8B5CF6]"
+                />
+                <h3 className="text-white font-bold text-lg">{displayData.name}</h3>
+                <div className="flex justify-center text-yellow-400 text-sm mb-2">
+                  {'★'.repeat(5)} {/* Static rating, as schema doesn't include ratings */}
+                </div>
+                <p className="text-[#8B5CF6] font-semibold text-sm">
+                  {displayData.skills && displayData.skills.length > 0
+                    ? displayData.skills[0].toUpperCase()
+                    : jobProfile?.title?.toUpperCase() || 'FREELANCER'}
+                </p>
               </div>
-              <span className="text-red-400 text-xs">Insufficient Balance</span>
-            </div>
-          </div>
 
-          {/* Description */}
-          <p className="text-gray-400 text-sm mb-4 leading-relaxed">
-            Experienced UI/UX designer specializing in Web3 interfaces and modern digital experiences.
-          </p>
-
-          {/* Skills Section */}
-          <div className="mb-4">
-            <h4 className="text-white font-semibold mb-2 text-sm">Skills</h4>
-            <div className="flex flex-wrap gap-1">
-              {(freelancer.skills || ['UI Design', 'UX Research', 'Figma', 'Prototyping']).map((skill) => (
-                <span
-                  key={skill}
-                  className="bg-[#26272B] text-white px-2 py-1 rounded-full text-xs border border-[#333]"
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Links Section */}
-          <div className="grid grid-cols-2 gap-4 text-xs">
-            <div>
-              <h4 className="text-white font-semibold mb-2">Portfolio</h4>
-              <a
-                href="#"
-                className="text-[#8B5CF6] hover:text-[#7C3AED] transition-colors flex items-center space-x-1"
-              >
-                <span>🌐</span>
-                <span>Website</span>
-              </a>
-            </div>
-
-            <div>
-              <h4 className="text-white font-semibold mb-2">Connect</h4>
-              <div className="space-y-1">
-                <a href="#" className="text-gray-400 hover:text-white transition-colors block">Twitter</a>
-                <a href="#" className="text-gray-400 hover:text-white transition-colors block">Discord</a>
+              {/* Action Section */}
+              <div className="flex items-center justify-between mb-4 p-3 bg-[#26272B] rounded-lg">
+                <button className="bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white px-4 py-2 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all text-sm font-medium">
+                  HIRE NOW
+                </button>
+                <div className="text-right">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+                    <span className="text-white font-medium">
+                      {displayData.hourlyRate ? `${displayData.hourlyRate} SOL/hr` : 'Rate N/A'}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+
+              {/* Description */}
+              <p className="text-gray-400 text-sm mb-4 leading-relaxed">
+                {displayData.bio || 'No bio available.'}
+              </p>
+
+              {/* Skills Section */}
+              {displayData.skills && displayData.skills.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-white font-semibold mb-2 text-sm">Skills</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {displayData.skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="bg-[#26272B] text-white px-2 py-1 rounded-full text-xs border border-[#333]"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Links Section */}
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <h4 className="text-white font-semibold mb-2">Portfolio</h4>
+                  {displayData.website ? (
+                    <a
+                      href={displayData.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#8B5CF6] hover:text-[#7C3AED] transition-colors flex items-center space-x-1"
+                    >
+                      <ExternalLink size={12} />
+                      <span>Website</span>
+                    </a>
+                  ) : (
+                    <p className="text-gray-400">No portfolio available</p>
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="text-white font-semibold mb-2">Connect</h4>
+                  <div className="space-y-1">
+                    {displayData.twitter ? (
+                      <a
+                        href={displayData.twitter}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-gray-400 hover:text-white transition-colors block"
+                      >
+                        Twitter
+                      </a>
+                    ) : (
+                      <p className="text-gray-400">No Twitter</p>
+                    )}
+                    {displayData.discord ? (
+                      <a
+                        href={displayData.discord}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-gray-400 hover:text-white transition-colors block"
+                      >
+                        Discord
+                      </a>
+                    ) : (
+                      <p className="text-gray-400">No Discord</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 };
+
 
 const WalletConnectionModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;

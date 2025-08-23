@@ -1,9 +1,15 @@
 {
   "/_app": "pages/_app.js",
-  "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
+  "/_error": "pages/_error.js",
+  "/inbox": "pages/inbox.js",
+  "/profile": "pages/profile.js",
+  "/dashboard": "pages/dashboard.js",
   "/api/gigs": "pages/api/gigs.js",
-  "/api/users": "pages/api/users.js",
+  "/api/profile/check-email": "pages/api/profile/check-email.js",
+  "/api/profile/update": "pages/api/profile/update.js",
   "/api/saved-gigs": "pages/api/saved-gigs.js",
-  "/gig/[id]": "pages/gig/[id].js"
+  "/api/users": "pages/api/users.js",
+  "/api/dashboard/stats": "pages/api/dashboard/stats.js",
+  "/api/transactions": "pages/api/transactions.js"
 }
