@@ -31,6 +31,13 @@ require('@solana/wallet-adapter-react-ui/styles.css');
 // Version number for the marketplace
 const MARKETPLACE_VERSION = "v2.2.1";
 
+interface SolPriceData {
+  solana: {
+    usd: number;
+  };
+}
+
+
 // Define Toast types
 type ToastType = 'success' | 'error' | 'info';
 
@@ -1004,7 +1011,7 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
     image: null as File | null,
     subject: '',
     description: '',
-    amount: '',
+    amountUSD: '', // Changed from 'amount' to 'amountUSD'
     category: '',
     tags: '' as string | string[],
   });
@@ -1012,6 +1019,9 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [toastAlert, setToastAlert] = useState<ToastAlert | null>(null);
+  const [solPrice, setSolPrice] = useState<number>(0); // Current SOL price in USD
+  const [solAmount, setSolAmount] = useState<number>(0); // Calculated SOL amount
+  const [isPriceLoading, setIsPriceLoading] = useState(false);
   const { publicKey, connected } = useWallet();
   const router = useRouter();
 
@@ -1019,6 +1029,65 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
     setToastAlert({ type, message });
     setTimeout(() => setToastAlert(null), 5000);
   };
+
+  // Fetch SOL price from CoinGecko API
+  const fetchSolPrice = async (): Promise<number> => {
+    try {
+      setIsPriceLoading(true);
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: SolPriceData = await response.json();
+      const price = data.solana?.usd;
+      
+      if (typeof price !== 'number' || price <= 0) {
+        throw new Error('Invalid price data received');
+      }
+
+      return price;
+    } catch (error) {
+      console.error('Error fetching SOL price:', error);
+      // Fallback to a reasonable default price (you might want to use a cached value)
+      return 100; // Default fallback price
+    } finally {
+      setIsPriceLoading(false);
+    }
+  };
+
+  // Calculate SOL amount when USD amount or SOL price changes
+  useEffect(() => {
+    const calculateSolAmount = () => {
+      const usdAmount = parseFloat(formData.amountUSD);
+      if (!isNaN(usdAmount) && usdAmount > 0 && solPrice > 0) {
+        const calculatedSol = usdAmount / solPrice;
+        setSolAmount(Math.round(calculatedSol * 1000000) / 1000000); // Round to 6 decimal places
+      } else {
+        setSolAmount(0);
+      }
+    };
+
+    calculateSolAmount();
+  }, [formData.amountUSD, solPrice]);
+
+  // Fetch SOL price when modal opens
+  useEffect(() => {
+    const initializePrice = async () => {
+      if (isOpen) {
+        const currentSolPrice = await fetchSolPrice();
+        setSolPrice(currentSolPrice);
+      }
+    };
+
+    initializePrice();
+  }, [isOpen]);
 
   // Check verification status with better error handling
   useEffect(() => {
@@ -1070,8 +1139,6 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
     }
   }, [publicKey, connected, router, isOpen]);
 
-  
-
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -1122,6 +1189,13 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  // Refresh SOL price manually
+  const handleRefreshPrice = async () => {
+    const newPrice = await fetchSolPrice();
+    setSolPrice(newPrice);
+    showToast('info', `SOL price updated: $${newPrice.toFixed(2)}`);
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
@@ -1132,13 +1206,17 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
         throw new Error('Please connect your wallet to post a gig');
       }
 
-      if (!formData.subject || !formData.description || !formData.amount) {
+      if (!formData.subject || !formData.description || !formData.amountUSD) {
         throw new Error('Please fill in all required fields (Subject, Description, Amount)');
       }
 
-      const amount = parseFloat(formData.amount);
-      if (isNaN(amount) || amount <= 0 || amount > 1000) {
-        throw new Error('Please enter a valid amount between 0.01 and 1000 SOL');
+      const usdAmount = parseFloat(formData.amountUSD);
+      if (isNaN(usdAmount) || usdAmount <= 0 || usdAmount > 100000) {
+        throw new Error('Please enter a valid amount between $1 and $100,000');
+      }
+
+      if (solAmount <= 0) {
+        throw new Error('Unable to calculate SOL amount. Please check the USD amount.');
       }
 
       const walletAddress = publicKey.toString();
@@ -1197,10 +1275,11 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
       const gigData = {
         title: formData.subject,
         description: formData.description,
-        amount,
+        amount: solAmount, // Use the calculated SOL amount
+        amountUSD: usdAmount, // Also store the USD amount for reference
         image: imageUrl,
         status: 'ACTIVE',
-        userId: userData.id, // Use User.id (cuid), not walletAddress
+        userId: userData.id,
         category: formData.category || null,
         tags,
       };
@@ -1236,11 +1315,12 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
         image: null,
         subject: '',
         description: '',
-        amount: '',
+        amountUSD: '',
         category: '',
         tags: '',
       });
       setPreviewUrl(null);
+      setSolAmount(0);
       setTimeout(() => {
         onClose();
       }, 1500);
@@ -1298,6 +1378,7 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Image Upload Section - Same as before */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Gig Image <span className="text-gray-400">(optional)</span>
@@ -1338,6 +1419,7 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
               </div>
             </div>
 
+            {/* Subject Field - Same as before */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Subject <span className="text-red-400">*</span>
@@ -1355,6 +1437,7 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
               <p className="text-xs text-gray-500 mt-1">{formData.subject.length}/100 characters</p>
             </div>
 
+            {/* Description Field - Same as before */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Description <span className="text-red-400">*</span>
@@ -1371,6 +1454,7 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
               <p className="text-xs text-gray-500 mt-1">{formData.description.length}/500 characters</p>
             </div>
 
+            {/* Category Field - Same as before */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Category <span className="text-gray-400">(optional)</span>
@@ -1386,6 +1470,7 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
               />
             </div>
 
+            {/* Tags Field - Same as before */}
             <div>
               <label className="block text-white text-sm font-medium mb-2">
                 Tags <span className="text-gray-400">(optional, comma-separated)</span>
@@ -1402,33 +1487,75 @@ const PostGigModal: React.FC<PostGigModalProps> = ({ isOpen, onClose }) => {
               <p className="text-xs text-gray-500 mt-1">Separate tags with commas</p>
             </div>
 
+            {/* Updated Amount Field - USD Input with SOL Conversion */}
             <div>
-              <label className="block text-white text-sm font-medium mb-2">
-                Amount (SOL) <span className="text-red-400">*</span>
-              </label>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-white text-sm font-medium">
+                  Amount (USD) <span className="text-red-400">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleRefreshPrice}
+                  disabled={isPriceLoading || isLoading}
+                  className="text-xs text-[#8B5CF6] hover:text-[#7C3AED] transition-colors disabled:opacity-50"
+                >
+                  {isPriceLoading ? 'Updating...' : 'Refresh SOL Price'}
+                </button>
+              </div>
+              
               <div className="relative">
                 <input
                   type="number"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  value={formData.amountUSD}
+                  onChange={(e) => setFormData({ ...formData, amountUSD: e.target.value })}
                   className="w-full bg-[#26272B] text-white rounded-lg p-3 pr-16 focus:ring-2 focus:ring-[#8B5CF6] focus:outline-none border border-gray-600 focus:border-transparent"
                   placeholder="0.00"
                   step="0.01"
-                  min="0.01"
-                  max="1000"
+                  min="1"
+                  max="100000"
                   disabled={isLoading}
                   required
                 />
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center space-x-1">
-                  <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
-                  <span className="text-gray-400 text-sm">SOL</span>
+                  <span className="text-gray-400 text-sm font-medium">USD</span>
                 </div>
               </div>
+
+              {/* SOL Conversion Display */}
+              <div className="mt-3 p-3 bg-[#26272B] rounded-lg border border-gray-600">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm text-gray-400">SOL Price:</span>
+                  <span className="text-sm text-white">
+                    {isPriceLoading ? (
+                      <div className="flex items-center space-x-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Loading...</span>
+                      </div>
+                    ) : (
+                      `$${solPrice.toFixed(2)}`
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-400">Equivalent in SOL:</span>
+                  <div className="flex items-center space-x-1">
+                    <img src="/images/sol-logo.png" alt="SOL" className="w-4 h-4" />
+                    <span className="text-white font-medium">
+                      {solAmount > 0 ? solAmount.toFixed(6) : '0.000000'} SOL
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500 mt-1">
+                The gig will be priced in SOL based on current market rates
+              </p>
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
-              disabled={isLoading || !formData.subject || !formData.description || !formData.amount}
+              disabled={isLoading || !formData.subject || !formData.description || !formData.amountUSD || solAmount <= 0}
               className="w-full bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] text-white py-3 rounded-lg hover:from-[#7C3AED] hover:to-[#6B2CF5] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center"
             >
               {isLoading ? (

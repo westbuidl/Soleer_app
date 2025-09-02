@@ -471,6 +471,7 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
   onGigUpdated,
   onGigDeleted
 }) => {
+  const { publicKey } = useWallet();
   const [formData, setFormData] = useState<EditFormData>({
     title: '',
     description: '',
@@ -486,7 +487,7 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
   const [toastAlert, setToastAlert] = useState<ToastAlert | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (gig && isOpen) {
       setFormData({
         title: gig.title || '',
@@ -531,7 +532,10 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
 
   const handleUpdateGig = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gig) return;
+    if (!gig || !publicKey) {
+      showToast('error', 'Wallet not connected or gig not found');
+      return;
+    }
 
     setError('');
     setIsLoading(true);
@@ -554,34 +558,61 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
         const uploadResponse = await fetch('/api/upload', {
           method: 'POST',
           body: formDataUpload,
+          headers: {
+            'X-Wallet-Address': publicKey.toString(),
+          },
         });
         
-        if (uploadResponse.ok) {
-          const uploadData = await uploadResponse.json();
-          imageUrl = uploadData.url;
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json();
+          throw new Error(errorData.error || 'Failed to upload image');
         }
+
+        const uploadData = await uploadResponse.json();
+        imageUrl = uploadData.url;
       }
 
       const updateData = {
         title: formData.title,
         description: formData.description,
-        amount: amount,
+        amount,
         status: formData.status,
         category: formData.category || null,
         tags: formData.tags ? formData.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [],
-        image: imageUrl
+        image: imageUrl,
+        walletAddress: publicKey.toString(),
       };
 
-      const response = await fetch(`/api/gigs/${gig.id}`, {
-        method: 'PUT',
+      // Try PATCH first
+      let response = await fetch(`/api/gigs/${gig.id}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'X-Wallet-Address': publicKey.toString(),
         },
         body: JSON.stringify(updateData),
       });
 
+      // Fallback to POST if PATCH fails with 405
+      if (response.status === 405) {
+        response = await fetch(`/api/gigs/${gig.id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Wallet-Address': publicKey.toString(),
+          },
+          body: JSON.stringify(updateData),
+        });
+      }
+
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Unauthorized: You do not have permission to update this gig');
+        }
+        if (response.status === 405) {
+          throw new Error('Method not allowed: Unable to update gig. Please contact support.');
+        }
         throw new Error(errorData.error || 'Failed to update gig');
       }
 
@@ -593,25 +624,34 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
         onClose();
       }, 1500);
     } catch (err) {
-      const error = err as Error;
-      setError(error.message);
-      showToast('error', error.message);
+      const error = err instanceof Error ? err.message : 'Failed to update gig';
+      setError(error);
+      showToast('error', error);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDeleteGig = async () => {
-    if (!gig) return;
+    if (!gig || !publicKey) {
+      showToast('error', 'Wallet not connected or gig not found');
+      return;
+    }
 
     setIsLoading(true);
     try {
       const response = await fetch(`/api/gigs/${gig.id}`, {
         method: 'DELETE',
+        headers: {
+          'X-Wallet-Address': publicKey.toString(),
+        },
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Unauthorized: You do not have permission to delete this gig');
+        }
         throw new Error(errorData.error || 'Failed to delete gig');
       }
 
@@ -622,29 +662,56 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
         onClose();
       }, 1500);
     } catch (err) {
-      const error = err as Error;
-      setError(error.message);
-      showToast('error', error.message);
+      const error = err instanceof Error ? err.message : 'Failed to delete gig';
+      setError(error);
+      showToast('error', error);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleStatusChange = async (newStatus: 'ACTIVE' | 'PAUSED') => {
-    if (!gig) return;
+    if (!gig || !publicKey) {
+      showToast('error', 'Wallet not connected or gig not found');
+      return;
+    }
+
+    if (gig.status === 'COMPLETED') {
+      showToast('error', 'Cannot change status of a completed gig');
+      return;
+    }
 
     setIsLoading(true);
     try {
       const response = await fetch(`/api/gigs/${gig.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'X-Wallet-Address': publicKey.toString(),
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, walletAddress: publicKey.toString() }),
       });
+
+      // Fallback to POST if PATCH fails with 405
+      if (response.status === 405) {
+        const response = await fetch(`/api/gigs/${gig.id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Wallet-Address': publicKey.toString(),
+          },
+          body: JSON.stringify({ status: newStatus, walletAddress: publicKey.toString() }),
+        });
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Unauthorized: You do not have permission to update this gig');
+        }
+        if (response.status === 405) {
+          throw new Error('Method not allowed: Unable to update gig status. Please contact support.');
+        }
         throw new Error(errorData.error || 'Failed to update gig status');
       }
 
@@ -653,9 +720,9 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
       setFormData({ ...formData, status: newStatus });
       showToast('success', `Gig ${newStatus.toLowerCase()} successfully`);
     } catch (err) {
-      const error = err as Error;
-      setError(error.message);
-      showToast('error', error.message);
+      const error = err instanceof Error ? err.message : 'Failed to update gig status';
+      setError(error);
+      showToast('error', error);
     } finally {
       setIsLoading(false);
     }
@@ -668,12 +735,13 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
       <div className="bg-[#1A1B1E] rounded-lg w-full max-w-2xl relative max-h-[90vh] overflow-y-auto">
         {toastAlert && (
           <div
-            className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${toastAlert.type === 'success'
+            className={`absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg ${
+              toastAlert.type === 'success'
                 ? 'bg-green-500'
                 : toastAlert.type === 'error'
-                  ? 'bg-red-500'
-                  : 'bg-blue-500'
-              } text-white text-sm font-medium`}
+                ? 'bg-red-500'
+                : 'bg-blue-500'
+            } text-white text-sm font-medium`}
           >
             {toastAlert.message}
           </div>
@@ -694,11 +762,17 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
               Manage Gig
             </h2>
             <div className="flex items-center space-x-2">
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${gig.status === 'ACTIVE' ? 'bg-green-500/20 text-green-400' :
-                  gig.status === 'PAUSED' ? 'bg-yellow-500/20 text-yellow-400' :
-                    gig.status === 'COMPLETED' ? 'bg-blue-500/20 text-blue-400' :
-                      'bg-gray-500/20 text-gray-400'
-                }`}>
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  gig.status === 'ACTIVE'
+                    ? 'bg-green-500/20 text-green-400'
+                    : gig.status === 'PAUSED'
+                    ? 'bg-yellow-500/20 text-yellow-400'
+                    : gig.status === 'COMPLETED'
+                    ? 'bg-blue-500/20 text-blue-400'
+                    : 'bg-gray-500/20 text-gray-400'
+                }`}
+              >
                 {gig.status}
               </span>
             </div>
@@ -707,11 +781,12 @@ const EditGigModal: React.FC<EditGigModalProps> = ({
           <div className="flex flex-wrap gap-2 mb-6 p-4 bg-[#26272B] rounded-lg">
             <button
               onClick={() => handleStatusChange(gig.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE')}
-              disabled={isLoading}
-              className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${gig.status === 'ACTIVE'
+              disabled={isLoading || gig.status === 'COMPLETED'}
+              className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                gig.status === 'ACTIVE'
                   ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
                   : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
-                }`}
+              } ${gig.status === 'COMPLETED' ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {gig.status === 'ACTIVE' ? <Pause size={16} /> : <Play size={16} />}
               <span>{gig.status === 'ACTIVE' ? 'Pause Gig' : 'Activate Gig'}</span>
